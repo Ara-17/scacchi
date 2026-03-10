@@ -45,43 +45,38 @@ function Game({ user, socket }) {
   const checkCheckmate = () => typeof game.isCheckmate === 'function' ? game.isCheckmate() : game.in_checkmate();
   const checkCheck = () => typeof game.isCheck === 'function' ? game.isCheck() : game.in_check();
 
-  function isPromotionMove(from, to) {
-    const piece = game.get(from);
-    if (!piece || piece.type !== 'p') return false;
-    return (piece.color === 'w' && to[1] === '8') || (piece.color === 'b' && to[1] === '1');
+  // LA FUNZIONE BLINDATA: Applica fisicamente la mossa
+  function executeMove(moveObj) {
+    try {
+      const gameCopy = new Chess(game.fen());
+      const move = gameCopy.move(moveObj);
+      if (move) {
+         setGame(gameCopy);
+         return move;
+      }
+    } catch(e) {}
+    return null;
   }
 
-  // LA FUNZIONE CORRETTA: Niente più crash silenziosi
   function onPieceDrop(sourceSquare, targetSquare) {
-    if (gameOver || promotionMove) return false;
-    if (game.turn() !== myColor) return false;
+    if (gameOver || promotionMove || game.turn() !== myColor) return false;
 
-    const gameCopy = new Chess(game.fen());
-    const isProm = isPromotionMove(sourceSquare, targetSquare);
+    // Controlla se è una mossa di promozione
+    const piece = game.get(sourceSquare);
+    const isPromotion = piece && piece.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1');
 
-    let move = null;
-    try {
-      // Passiamo "promotion: 'q'" SOLO se è effettivamente un pedone che arriva in fondo
-      move = gameCopy.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: isProm ? 'q' : undefined
-      });
-    } catch (e) {
-      return false; // Mossa non valida
+    if (isPromotion) {
+       setPromotionMove({ from: sourceSquare, to: targetSquare });
+       return false; // Ferma il pezzo, aspetta il popup
     }
 
-    if (!move) return false;
+    // Mossa classica
+    const move = executeMove({ from: sourceSquare, to: targetSquare });
+    if (!move) return false; // Mossa illegale
 
-    if (isProm) {
-      setPromotionMove({ from: sourceSquare, to: targetSquare });
-      return false; // Mette in pausa per farti scegliere il pezzo
-    }
-
-    // Mossa accettata
-    setGame(gameCopy);
+    // Aggiornamenti UI e Invio
     setLastMoveSquares([sourceSquare, targetSquare]);
-    setMoveLog((prev) => [...prev, { piece: move.piece, color: move.color, from: sourceSquare, to: targetSquare }]);
+    setMoveLog(prev => [...prev, move]);
     setSelectedSquare(null);
     setLegalMoves([]);
 
@@ -96,20 +91,16 @@ function Game({ user, socket }) {
     if (!promotionMove) return;
     const { from, to } = promotionMove;
 
-    const gameCopy = new Chess(game.fen());
-    let move;
-    try {
-      move = gameCopy.move({ from, to, promotion: promPiece });
-    } catch (e) { return; }
+    const move = executeMove({ from, to, promotion: promPiece });
+    if (move) {
+      setPromotionMove(null);
+      setLastMoveSquares([from, to]);
+      setMoveLog((prev) => [...prev, move]);
 
-    setGame(gameCopy);
-    setPromotionMove(null);
-    setLastMoveSquares([from, to]);
-    setMoveLog((prev) => [...prev, { piece: promPiece, color: myColor, from, to }]);
-
-    const moveData = { from, to, promotion: promPiece, piece: promPiece, color: myColor };
-    if (mode === 'online') socket.emit('send-move', { to: opponent, moveData });
-    else if (conn && conn.open) conn.send({ type: 'move', data: moveData });
+      const moveData = { from, to, promotion: promPiece, piece: move.piece, color: myColor };
+      if (mode === 'online') socket.emit('send-move', { to: opponent, moveData });
+      else if (conn && conn.open) conn.send({ type: 'move', data: moveData });
+    }
   }
 
   function onSquareClick(square) {
@@ -141,8 +132,23 @@ function Game({ user, socket }) {
 
   const gestisciDisconnessioneAvversario = () => {
     setGameOver(true);
-    setWinner(`Tu (Vittoria a tavolino, l'avversario si è disconnesso)`);
+    setWinner(`Tu (Vittoria a tavolino, l'avversario ha abbandonato)`);
   };
+
+  // CONTROLLO DISCONNESSIONI (Chiusura scheda/tasto indietro)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (mode === 'online' && !gameOver) socket.emit('end-match', user);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Quando il componente smonta (es: torna alla home)
+      if (mode === 'online' && !gameOver) socket.emit('end-match', user);
+    };
+  }, [mode, gameOver, socket, user]);
 
   useEffect(() => {
     if (checkGameOver() && !gameOver) {
@@ -181,14 +187,21 @@ function Game({ user, socket }) {
     return () => clearInterval(timer);
   }, [game.turn(), gameOver, colorSelected]);
 
+  // SOCKET & CONNESSIONE
   useEffect(() => {
     if (mode === 'online') {
       if (!opponent) { navigate('/home'); return; }
 
       const handleReceiveMove = (moveData) => {
-        setGame((g) => {
-          const copy = new Chess(g.fen());
-          try { copy.move({ from: moveData.from, to: moveData.to, promotion: moveData.promotion || undefined }); } catch(e) {}
+        setGame((currentGameState) => {
+          const copy = new Chess(currentGameState.fen());
+          try { 
+            const moveObj = { from: moveData.from, to: moveData.to };
+            if (moveData.promotion) moveObj.promotion = moveData.promotion;
+            copy.move(moveObj); 
+          } catch(e) {
+            return currentGameState;
+          }
           return copy;
         });
         setLastMoveSquares([moveData.from, moveData.to]);
@@ -239,9 +252,15 @@ function Game({ user, socket }) {
     if (!message || !message.type) return;
     if (message.type === 'move') {
       const moveData = message.data;
-      setGame((g) => {
-        const copy = new Chess(g.fen());
-        try { copy.move({ from: moveData.from, to: moveData.to, promotion: moveData.promotion || undefined }); } catch(e){} 
+      setGame((currentGameState) => {
+        const copy = new Chess(currentGameState.fen());
+        try { 
+          const moveObj = { from: moveData.from, to: moveData.to };
+          if (moveData.promotion) moveObj.promotion = moveData.promotion;
+          copy.move(moveObj); 
+        } catch(e) {
+          return currentGameState;
+        } 
         return copy;
       });
       setLastMoveSquares([moveData.from, moveData.to]);
@@ -342,7 +361,7 @@ function Game({ user, socket }) {
                 customSquareStyles={customStyles}
                 boardWidth={600}
                 boardOrientation={myColor === 'w' ? 'white' : 'black'}
-                arePiecesDraggable={!gameOver && !promotionMove}
+                arePiecesDraggable={!gameOver && !promotionMove && game.turn() === myColor}
               />
 
               {promotionMove && (

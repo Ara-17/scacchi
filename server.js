@@ -34,7 +34,7 @@ const io = new Server(server, {
 
 let onlineUsers = {};
 let matchQueue = null;
-let activeMatches = {}; // NOVITÀ: Traccia le partite in corso (per gestire disconnessioni)
+let activeMatches = {}; 
 
 function aggiornaListaOnline() {
   const users = Object.values(onlineUsers).filter(u => u.online).map(u => u.nome);
@@ -59,7 +59,6 @@ app.post('/login', (req, res) => {
     if (results.length === 0) return res.status(401).json({ error: "Credenziali errate" });
 
     req.session.username = username;
-    
     if (!onlineUsers[username]) {
         onlineUsers[username] = { nome: username, online: false, socketId: null };
     }
@@ -92,7 +91,7 @@ io.on('connection', (socket) => {
       onlineUsers[username].online = true;
       onlineUsers[username].socketId = socket.id;
     }
-    aggiornaListaOnline(); // Forza aggiornamento lista a tutti
+    aggiornaListaOnline(); 
   });
 
   socket.on('challenge', ({ from, to }) => {
@@ -103,7 +102,6 @@ io.on('connection', (socket) => {
   socket.on('challenge-accepted', ({ from, to }) => {
     const userFrom = onlineUsers[from];
     if (userFrom && userFrom.online) {
-      // Registra la partita in corso
       activeMatches[from] = to;
       activeMatches[to] = from;
       io.to(userFrom.socketId).emit('challenge-accepted', { to });
@@ -120,7 +118,6 @@ io.on('connection', (socket) => {
       const opponent = matchQueue;
       matchQueue = null; 
       
-      // Registra la partita in corso
       activeMatches[username] = opponent;
       activeMatches[opponent] = username;
 
@@ -141,15 +138,20 @@ io.on('connection', (socket) => {
     if (userTo && userTo.online) io.to(userTo.socketId).emit('receive-move', moveData);
   });
 
-  // Pulizia match quando un giocatore esce dalla partita di sua volontà
+  // Uscita volontaria o cambio di url/scheda (richiamato da React)
   socket.on('end-match', (username) => {
      const opponent = activeMatches[username];
-     delete activeMatches[username];
-     if (opponent) delete activeMatches[opponent];
+     if (opponent) {
+         if (onlineUsers[opponent] && onlineUsers[opponent].socketId) {
+             io.to(onlineUsers[opponent].socketId).emit('opponent-disconnected');
+         }
+         delete activeMatches[username];
+         delete activeMatches[opponent];
+     }
   });
 
+  // Uscita drastica (chiusura netta del browser)
   socket.on('disconnect', () => {
-    // Trova chi si è disconnesso
     const userObj = Object.values(onlineUsers).find(u => u.socketId === socket.id);
     if (userObj) {
         const disconnectedUser = userObj.nome;
@@ -157,14 +159,11 @@ io.on('connection', (socket) => {
         userObj.socketId = null;
         if (matchQueue === disconnectedUser) matchQueue = null;
 
-        // NOVITÀ: Controllo Vittoria a tavolino
         const opponentInMatch = activeMatches[disconnectedUser];
-        if (opponentInMatch && onlineUsers[opponentInMatch] && onlineUsers[opponentInMatch].online) {
-            // Avvisa l'avversario che l'altro si è disconnesso
+        if (opponentInMatch && onlineUsers[opponentInMatch] && onlineUsers[opponentInMatch].socketId) {
             io.to(onlineUsers[opponentInMatch].socketId).emit('opponent-disconnected');
         }
 
-        // Rimuovi la partita attiva
         delete activeMatches[disconnectedUser];
         if (opponentInMatch) delete activeMatches[opponentInMatch];
     }
