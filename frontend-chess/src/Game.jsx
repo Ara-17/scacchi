@@ -1,6 +1,6 @@
 import './Game.css'; 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import Peer from 'peerjs';
@@ -33,6 +33,12 @@ function Game({ user, socket }) {
   const [myColor, setMyColor] = useState(null);  
   const [opponentColor, setOpponentColor] = useState(null);
 
+  // REFS AGGIUNTI PER EVITARE CHE LA SCACCHIERA SI BLOCCHI (STALE CLOSURE)
+  const gameRef = useRef(game);
+  const myColorRef = useRef(myColor);
+  useEffect(() => { gameRef.current = game; }, [game]);
+  useEffect(() => { myColorRef.current = myColor; }, [myColor]);
+
   const [peer, setPeer] = useState(null);
   const [conn, setConn] = useState(null);
   const [peerId, setPeerId] = useState('');
@@ -45,23 +51,26 @@ function Game({ user, socket }) {
   const checkCheck = () => typeof game.isCheck === 'function' ? game.isCheck() : game.in_check();
 
   function isPromotionMove(from, to) {
-    const piece = game.get(from);
+    const piece = gameRef.current.get(from);
     if (!piece || piece.type !== 'p') return false;
     return (piece.color === 'w' && to[1] === '8') || (piece.color === 'b' && to[1] === '1');
   }
 
-  // LA FUNZIONE CORRETTA E RISOLUTIVA PER IL MOVIMENTO DEI PEZZI
+  // LA FUNZIONE CORRETTA E RISOLUTIVA PER IL MOVIMENTO DEI PEZZI (Usa i Ref!)
   function attemptMove(from, to, promotion = null) {
+    const currentGame = gameRef.current;
+    const currentMyColor = myColorRef.current;
+
     // 1. Controlli base: Partita finita o non è il mio turno
-    if (gameOver || game.turn() !== myColor) return false;
+    if (gameOver || currentGame.turn() !== currentMyColor) return false;
 
     // 2. Controllo colore pezzo
-    const piece = game.get(from);
-    if (!piece || piece.color !== myColor) return false;
+    const piece = currentGame.get(from);
+    if (!piece || piece.color !== currentMyColor) return false;
 
     // 3. Gestione popup promozione
     if (!promotion && isPromotionMove(from, to)) {
-      const testGame = new Chess(game.fen());
+      const testGame = new Chess(currentGame.fen());
       try {
         const testMove = testGame.move({ from, to, promotion: 'q' });
         if (!testMove) return false;
@@ -79,7 +88,7 @@ function Game({ user, socket }) {
     if (promotion) moveObj.promotion = promotion;
 
     let moveData = null;
-    const gameCopy = new Chess(game.fen());
+    const gameCopy = new Chess(currentGame.fen());
     
     try {
       const move = gameCopy.move(moveObj);
@@ -115,23 +124,26 @@ function Game({ user, socket }) {
   }
 
   function onSquareClick(square) {
+    const currentGame = gameRef.current;
+    const currentMyColor = myColorRef.current;
+
     if (!colorSelected || gameOver || promotionMove) return;
-    if (game.turn() !== myColor) return;
+    if (currentGame.turn() !== currentMyColor) return;
 
     if (selectedSquare && legalMoves.includes(square)) {
       attemptMove(selectedSquare, square);
       return;
     }
 
-    const piece = game.get(square);
-    if (!piece || piece.color !== myColor) {
+    const piece = currentGame.get(square);
+    if (!piece || piece.color !== currentMyColor) {
       setSelectedSquare(null);
       setLegalMoves([]);
       return;
     }
 
     try {
-      const moves = game.moves({ square, verbose: true }).filter(m => m.color === myColor);
+      const moves = currentGame.moves({ square, verbose: true }).filter(m => m.color === currentMyColor);
       if (moves.length > 0) {
         setSelectedSquare(square);
         setLegalMoves(moves.map(m => m.to));
@@ -269,7 +281,8 @@ function Game({ user, socket }) {
       setMoveLog((log) => [...log, moveData]);
     }
     else if (message.type === 'colorSelection') {
-      setOpponentColor(message.color === 'w' ? 'b' : 'w');
+      // FIX ERRORE LOGICO PEERJS: Inserito message.color in opponentColor!
+      setOpponentColor(message.color); 
       setMyColor(message.color === 'w' ? 'b' : 'w');
       setColorSelected(true);
     }
@@ -375,7 +388,7 @@ function Game({ user, socket }) {
                 customSquareStyles={customStyles}
                 boardWidth={600}
                 boardOrientation={myColor === 'w' ? 'white' : 'black'}
-                arePiecesDraggable={!gameOver && !promotionMove && game.turn() === myColor}
+                arePiecesDraggable={!gameOver && !promotionMove}
               />
 
               {promotionMove && (
