@@ -4,7 +4,10 @@ import { Link } from 'react-router-dom';
 function Login({ setUser, socket }) {
   const [formData, setFormData] = useState({ username: '', password: '' });
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    // FIX: Previene il refresh della pagina causato dal tasto Invio (submit del form)
+    if (e) e.preventDefault(); 
+    
     try {
       const res = await fetch('http://localhost:3001/login', {
         method: 'POST',
@@ -30,17 +33,19 @@ function Login({ setUser, socket }) {
 
   return (
     <div className="auth-box">
-      <h1 className="brand-title" style={{fontSize: '2rem', marginBottom: '20px'}}>
+      <h1 className="brand-title" style={{fontSize: '2.5rem', marginBottom: '20px'}}>
         ONLINE <span>CHESS</span>
       </h1>
       <h2 style={{color: '#aaa', fontWeight: '300', marginBottom: '30px'}}>ACCEDI</h2>
       
-      <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+      {/* L'uso di <form> abilita il tasto Invio per il submit */}
+      <form onSubmit={handleLogin} style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
         <input 
           className="auth-input" 
           placeholder="Username" 
           value={formData.username}
           onChange={e => setFormData({...formData, username: e.target.value})}
+          autoFocus
         />
         <input 
           className="auth-input" 
@@ -50,10 +55,10 @@ function Login({ setUser, socket }) {
           onChange={e => setFormData({...formData, password: e.target.value})}
         />
         
-        <button className="auth-btn" onClick={handleLogin}>ACCEDI</button>
-      </div>
+        <button type="submit" className="auth-btn">ACCEDI</button>
+      </form>
 
-      <div className="form-footer" style={{marginTop: '20px'}}>
+      <div className="form-footer" style={{marginTop: '25px'}}>
          <p style={{color: '#888'}}>
            Non hai un account? <Link to="/register" style={{color: '#d4af37'}}>Registrati ora</Link>
          </p>

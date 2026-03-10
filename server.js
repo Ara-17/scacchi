@@ -24,7 +24,7 @@ app.use(session({
   cookie: { 
     secure: false, 
     httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24 // 1 giorno
+    maxAge: 1000 * 60 * 60 * 24 
   }
 }));
 
@@ -33,7 +33,8 @@ const io = new Server(server, {
 });
 
 let onlineUsers = {};
-let matchQueue = null; // Coda per il matchmaking casuale
+let matchQueue = null;
+let activeMatches = {}; // NOVITÀ: Traccia le partite in corso (per gestire disconnessioni)
 
 function aggiornaListaOnline() {
   const users = Object.values(onlineUsers).filter(u => u.online).map(u => u.nome);
@@ -41,7 +42,6 @@ function aggiornaListaOnline() {
 }
 
 // --- API ROUTES ---
-
 app.post('/register', (req, res) => {
   const { username, password, email, nome, cognome, cf, cell } = req.body;
   const sql = "INSERT INTO utente (nome, cognome, username, email, password, cf, cell) VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -64,18 +64,13 @@ app.post('/login', (req, res) => {
         onlineUsers[username] = { nome: username, online: false, socketId: null };
     }
     
-    req.session.save(() => {
-        res.json({ message: "Login effettuato", username: username });
-    });
+    req.session.save(() => res.json({ message: "Login effettuato", username: username }));
   });
 });
 
 app.get('/api/check-session', (req, res) => {
-    if (req.session.username) {
-        res.json({ isLoggedIn: true, username: req.session.username });
-    } else {
-        res.json({ isLoggedIn: false });
-    }
+    if (req.session.username) res.json({ isLoggedIn: true, username: req.session.username });
+    else res.json({ isLoggedIn: false });
 });
 
 app.post('/logout', (req, res) => {
@@ -90,66 +85,88 @@ app.post('/logout', (req, res) => {
 io.on('connection', (socket) => {
   
   socket.on('set-online', (username) => {
-    if (!username || !onlineUsers[username]) return;
-    onlineUsers[username].online = true;
-    onlineUsers[username].socketId = socket.id;
-    aggiornaListaOnline();
+    if (!username) return;
+    if (!onlineUsers[username]) {
+      onlineUsers[username] = { nome: username, online: true, socketId: socket.id };
+    } else {
+      onlineUsers[username].online = true;
+      onlineUsers[username].socketId = socket.id;
+    }
+    aggiornaListaOnline(); // Forza aggiornamento lista a tutti
   });
 
-  // Sfida Diretta (Dalla lista amici)
   socket.on('challenge', ({ from, to }) => {
     const userTo = onlineUsers[to];
-    if (userTo && userTo.online) {
-      io.to(userTo.socketId).emit('challenge-request', { from });
-    }
+    if (userTo && userTo.online) io.to(userTo.socketId).emit('challenge-request', { from });
   });
 
   socket.on('challenge-accepted', ({ from, to }) => {
     const userFrom = onlineUsers[from];
     if (userFrom && userFrom.online) {
+      // Registra la partita in corso
+      activeMatches[from] = to;
+      activeMatches[to] = from;
       io.to(userFrom.socketId).emit('challenge-accepted', { to });
     }
   });
   
   socket.on('challenge-rejected', ({ from, to }) => {
       const userFrom = onlineUsers[from];
-      if (userFrom && userFrom.online) {
-        io.to(userFrom.socketId).emit('challenge-rejected', { to });
-      }
+      if (userFrom && userFrom.online) io.to(userFrom.socketId).emit('challenge-rejected', { to });
   });
 
-  // --- GIOCA ONLINE ORA (Matchmaking) ---
   socket.on('find-random-match', (username) => {
-    // Se c'è già un altro giocatore in coda e non sei tu
     if (matchQueue && matchQueue !== username && onlineUsers[matchQueue] && onlineUsers[matchQueue].online) {
       const opponent = matchQueue;
-      matchQueue = null; // Svuota la coda
-      // Fa partire la partita. Il primo che era in coda fa il Bianco (isHost: true)
+      matchQueue = null; 
+      
+      // Registra la partita in corso
+      activeMatches[username] = opponent;
+      activeMatches[opponent] = username;
+
       io.to(onlineUsers[opponent].socketId).emit('match-found', { opponent: username, isHost: true });
       io.to(onlineUsers[username].socketId).emit('match-found', { opponent: opponent, isHost: false });
     } else {
-      // Nessuno in coda: aspetta
       matchQueue = username;
     }
   });
 
-  // --- INOLTRO MOSSE (Solo per modalità Online) ---
-  socket.on('send-move', ({ to, moveData }) => {
+  socket.on('select-color', ({ to, color }) => {
     const userTo = onlineUsers[to];
-    if (userTo && userTo.online) {
-      io.to(userTo.socketId).emit('receive-move', moveData);
-    }
+    if (userTo && userTo.online) io.to(userTo.socketId).emit('color-selected', color);
   });
 
-  // Disconnessione
+  socket.on('send-move', ({ to, moveData }) => {
+    const userTo = onlineUsers[to];
+    if (userTo && userTo.online) io.to(userTo.socketId).emit('receive-move', moveData);
+  });
+
+  // Pulizia match quando un giocatore esce dalla partita di sua volontà
+  socket.on('end-match', (username) => {
+     const opponent = activeMatches[username];
+     delete activeMatches[username];
+     if (opponent) delete activeMatches[opponent];
+  });
+
   socket.on('disconnect', () => {
-    for (const username in onlineUsers) {
-      if (onlineUsers[username].socketId === socket.id) {
-        onlineUsers[username].online = false;
-        onlineUsers[username].socketId = null;
-        if (matchQueue === username) matchQueue = null; // Toglilo dalla coda se scollega
-        break;
-      }
+    // Trova chi si è disconnesso
+    const userObj = Object.values(onlineUsers).find(u => u.socketId === socket.id);
+    if (userObj) {
+        const disconnectedUser = userObj.nome;
+        userObj.online = false;
+        userObj.socketId = null;
+        if (matchQueue === disconnectedUser) matchQueue = null;
+
+        // NOVITÀ: Controllo Vittoria a tavolino
+        const opponentInMatch = activeMatches[disconnectedUser];
+        if (opponentInMatch && onlineUsers[opponentInMatch] && onlineUsers[opponentInMatch].online) {
+            // Avvisa l'avversario che l'altro si è disconnesso
+            io.to(onlineUsers[opponentInMatch].socketId).emit('opponent-disconnected');
+        }
+
+        // Rimuovi la partita attiva
+        delete activeMatches[disconnectedUser];
+        if (opponentInMatch) delete activeMatches[opponentInMatch];
     }
     aggiornaListaOnline();
   });

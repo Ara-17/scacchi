@@ -15,9 +15,9 @@ function Home({ user, socket, setUser }) {
   useEffect(() => {
     socket.on('online-users', (users) => setOnlineUsers(users));
     
-    // Accetta sfida dalla sidebar -> Va alla modalità ONLINE (Socket)
+    // Sfida ricevuta dalla Sidebar (Socket.io)
     socket.on('challenge-request', ({ from }) => {
-      if (window.confirm(`Sfida da ${from}. Accetti?`)) {
+      if (window.confirm(`Sfida diretta da ${from}. Accetti?`)) {
         socket.emit('challenge-accepted', { from, to: user });
         navigate('/game', { state: { mode: 'online', opponent: from, isHost: false } }); 
       } else {
@@ -29,9 +29,9 @@ function Home({ user, socket, setUser }) {
       navigate('/game', { state: { mode: 'online', opponent: to, isHost: true } });
     });
     
-    socket.on('challenge-rejected', ({ to }) => alert(`Sfida a ${to} rifiutata.`));
+    socket.on('challenge-rejected', ({ to }) => alert(`La tua sfida a ${to} è stata rifiutata.`));
 
-    // Partita trovata dal Matchmaking -> Va alla modalità ONLINE (Socket)
+    // Partita Casuale trovata dal Matchmaking (Socket.io)
     socket.on('match-found', ({ opponent, isHost }) => {
       setIsSearching(false);
       navigate('/game', { state: { mode: 'online', opponent, isHost } });
@@ -53,18 +53,19 @@ function Home({ user, socket, setUser }) {
     setUser(null);
   };
 
+  // Clic su un utente dalla lista -> Usa Socket.io
   const inviaSfida = (targetUser) => {
     socket.emit('challenge', { from: user, to: targetUser });
-    alert(`Sfida inviata a ${targetUser}`);
+    alert(`Sfida inviata a ${targetUser}. In attesa di risposta...`);
   };
 
-  // BOTTONE 1: Usa Socket.io per cercare a caso
+  // Matchmaking Casuale -> Usa Socket.io
   const giocaOnlineOra = () => {
     setIsSearching(true);
     socket.emit('find-random-match', user);
   };
 
-  // BOTTONE 2: Usa PeerJS manuale (La tua vecchia modalità)
+  // Sfida Manuale -> Usa PeerJS
   const sfidaAmico = () => {
     navigate('/game', { state: { mode: 'friend' } });
   };
@@ -93,7 +94,7 @@ function Home({ user, socket, setUser }) {
           <ul className="user_list">
             {onlineUsers.map((u) => (
               u !== user && (
-                <li key={u} className="friend-item" onClick={() => inviaSfida(u)}>
+                <li key={u} className="friend-item" onClick={() => inviaSfida(u)} title={`Sfida ${u} direttamente!`}>
                   <div className="friend-avatar"></div>
                   <span className="user_name">{u}</span>
                   <div className="status-dot"></div>
@@ -115,8 +116,7 @@ function Home({ user, socket, setUser }) {
             </button>
             
             <div className="secondary-actions">
-              <button className="btn-sec" onClick={sfidaAmico}>SFIDA AMICO</button>
-              <button className="btn-sec">TORNEI LIVE</button>
+              <button className="btn-sec" onClick={sfidaAmico}>SFIDA AMICO (CODICE)</button>
               <button className="btn-sec" onClick={handleLogout} style={{borderColor: '#e74c3c', color: '#e74c3c'}}>ESCI</button>
             </div>
           </div>

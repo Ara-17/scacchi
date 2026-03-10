@@ -14,7 +14,6 @@ function Game({ user, socket }) {
   const location = useLocation();
   const navigate = useNavigate();
   
-  // mode può essere 'online' (Socket) o 'friend' (PeerJS)
   const { mode, opponent, isHost } = location.state || { mode: 'friend' };
 
   const [game, setGame] = useState(new Chess());
@@ -29,28 +28,22 @@ function Game({ user, socket }) {
   const [moveLog, setMoveLog] = useState([]);
   const [inCheckSquare, setInCheckSquare] = useState(null);
 
-  // --- STATI CONDIVISI ---
-  // In modalità online saltiamo le fasi di connessione manuale
   const [connected, setConnected] = useState(mode === 'online');
-  const [colorSelected, setColorSelected] = useState(mode === 'online');
-  const [myColor, setMyColor] = useState(mode === 'online' ? (isHost ? 'w' : 'b') : null);  
-  const [opponentColor, setOpponentColor] = useState(mode === 'online' ? (isHost ? 'b' : 'w') : null);
+  const [colorSelected, setColorSelected] = useState(false);
+  const [myColor, setMyColor] = useState(null);  
+  const [opponentColor, setOpponentColor] = useState(null);
 
-  // --- STATI PEERJS (Solo per modalità amico) ---
+  // PEER JS
   const [peer, setPeer] = useState(null);
   const [conn, setConn] = useState(null);
   const [peerId, setPeerId] = useState('');
   const [opponentId, setOpponentId] = useState('');
   const [connectionError, setConnectionError] = useState('');
+  const [isPeerHost, setIsPeerHost] = useState(false); 
 
-  // ------------------- FUNZIONI GIOCO -------------------
-  function safeGameMutate(modify) {
-    setGame((g) => {
-      const copy = new Chess(g.fen());
-      modify(copy);
-      return copy;
-    });
-  }
+  const checkGameOver = () => typeof game.isGameOver === 'function' ? game.isGameOver() : game.game_over();
+  const checkCheckmate = () => typeof game.isCheckmate === 'function' ? game.isCheckmate() : game.in_checkmate();
+  const checkCheck = () => typeof game.isCheck === 'function' ? game.isCheck() : game.in_check();
 
   function isPromotionMove(from, to) {
     const piece = game.get(from);
@@ -58,80 +51,109 @@ function Game({ user, socket }) {
     return (piece.color === 'w' && to[1] === '8') || (piece.color === 'b' && to[1] === '1');
   }
 
-  function attemptMove(from, to, promotion = null) {
-    const piece = game.get(from);
-    if (!piece || piece.color !== myColor || game.turn() !== myColor) return;
+  // LA FUNZIONE CORRETTA: Niente più crash silenziosi
+  function onPieceDrop(sourceSquare, targetSquare) {
+    if (gameOver || promotionMove) return false;
+    if (game.turn() !== myColor) return false;
 
-    if (!promotion && isPromotionMove(from, to)) {
-      setPromotionMove({ from, to });
-      setSelectedSquare(null);
-      setLegalMoves([]);
-      return;
+    const gameCopy = new Chess(game.fen());
+    const isProm = isPromotionMove(sourceSquare, targetSquare);
+
+    let move = null;
+    try {
+      // Passiamo "promotion: 'q'" SOLO se è effettivamente un pedone che arriva in fondo
+      move = gameCopy.move({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: isProm ? 'q' : undefined
+      });
+    } catch (e) {
+      return false; // Mossa non valida
     }
 
-    const moveObj = { from, to };
-    if (promotion) moveObj.promotion = promotion;
+    if (!move) return false;
 
-    const move = game.move(moveObj);
-    if (!move) return; 
+    if (isProm) {
+      setPromotionMove({ from: sourceSquare, to: targetSquare });
+      return false; // Mette in pausa per farti scegliere il pezzo
+    }
 
-    setLastMoveSquares([from, to]);
+    // Mossa accettata
+    setGame(gameCopy);
+    setLastMoveSquares([sourceSquare, targetSquare]);
+    setMoveLog((prev) => [...prev, { piece: move.piece, color: move.color, from: sourceSquare, to: targetSquare }]);
     setSelectedSquare(null);
     setLegalMoves([]);
-    setPromotionMove(null);
 
-    const moveData = { piece: move.piece, color: move.color, from: move.from, to: move.to, promotion: move.promotion || null };
-    setMoveLog((log) => [...log, moveData]);
+    const moveData = { from: sourceSquare, to: targetSquare, promotion: null, piece: move.piece, color: move.color };
+    if (mode === 'online') socket.emit('send-move', { to: opponent, moveData });
+    else if (conn && conn.open) conn.send({ type: 'move', data: moveData });
 
-    // INVIO MOSSA (Bivio tra Socket e PeerJS)
-    if (mode === 'online') {
-      socket.emit('send-move', { to: opponent, moveData });
-    } else {
-      if (conn && conn.open) conn.send({ type: 'move', data: moveData });
-    }
+    return true; 
   }
 
-  function promotePiece(piece) {
+  function promotePiece(promPiece) {
     if (!promotionMove) return;
-    attemptMove(promotionMove.from, promotionMove.to, piece);
+    const { from, to } = promotionMove;
+
+    const gameCopy = new Chess(game.fen());
+    let move;
+    try {
+      move = gameCopy.move({ from, to, promotion: promPiece });
+    } catch (e) { return; }
+
+    setGame(gameCopy);
+    setPromotionMove(null);
+    setLastMoveSquares([from, to]);
+    setMoveLog((prev) => [...prev, { piece: promPiece, color: myColor, from, to }]);
+
+    const moveData = { from, to, promotion: promPiece, piece: promPiece, color: myColor };
+    if (mode === 'online') socket.emit('send-move', { to: opponent, moveData });
+    else if (conn && conn.open) conn.send({ type: 'move', data: moveData });
   }
 
   function onSquareClick(square) {
-    if (!colorSelected || gameOver || promotionMove) return;
-    if (game.turn() !== myColor) return; 
-
-    if (selectedSquare && legalMoves.includes(square)) {
-      attemptMove(selectedSquare, square);
-      return;
-    }
-
-    const piece = game.get(square);
-    if (!piece || piece.color !== myColor) {
+    if (gameOver || promotionMove || game.turn() !== myColor) {
       setSelectedSquare(null);
       setLegalMoves([]);
       return;
     }
 
-    const moves = game.moves({ square, verbose: true }).filter(m => m.color === myColor);
-    if (moves.length > 0) {
+    if (selectedSquare && legalMoves.includes(square)) {
+      onPieceDrop(selectedSquare, square);
+      return;
+    }
+
+    const pieceObj = game.get(square);
+    if (pieceObj && pieceObj.color === myColor) {
       setSelectedSquare(square);
-      setLegalMoves(moves.map(m => m.to));
+      try {
+        const moves = game.moves({ square, verbose: true });
+        setLegalMoves(moves.map(m => m.to));
+      } catch(e) {
+        setLegalMoves([]);
+      }
     } else {
       setSelectedSquare(null);
       setLegalMoves([]);
     }
   }
 
+  const gestisciDisconnessioneAvversario = () => {
+    setGameOver(true);
+    setWinner(`Tu (Vittoria a tavolino, l'avversario si è disconnesso)`);
+  };
+
   useEffect(() => {
-    if (game.game_over()) {
+    if (checkGameOver() && !gameOver) {
       setGameOver(true);
-      if (game.in_checkmate()) setWinner(game.turn() === 'w' ? 'Nero (Scacco Matto)' : 'Bianco (Scacco Matto)');
+      if (checkCheckmate()) setWinner(game.turn() === 'w' ? 'Nero (Scacco Matto)' : 'Bianco (Scacco Matto)');
       else setWinner('Pareggio');
     }
   }, [game.fen()]);
 
   useEffect(() => {
-    if (game.in_check()) {
+    if (checkCheck()) {
       const color = game.turn();
       let kingSq = null;
       for (let file of "abcdefgh") {
@@ -160,29 +182,36 @@ function Game({ user, socket }) {
   }, [game.turn(), gameOver, colorSelected]);
 
   useEffect(() => {
-    setSelectedSquare(null);
-    setLegalMoves([]);
-  }, [game.turn()]);
-
-  // ------------------- SETUP CONNESSIONE (BIVIO) -------------------
-  useEffect(() => {
     if (mode === 'online') {
-      // 1. MODALITÀ ONLINE: Socket.io
       if (!opponent) { navigate('/home'); return; }
 
       const handleReceiveMove = (moveData) => {
-        safeGameMutate((g) => {
-          g.move({ from: moveData.from, to: moveData.to, promotion: moveData.promotion || undefined });
+        setGame((g) => {
+          const copy = new Chess(g.fen());
+          try { copy.move({ from: moveData.from, to: moveData.to, promotion: moveData.promotion || undefined }); } catch(e) {}
+          return copy;
         });
         setLastMoveSquares([moveData.from, moveData.to]);
-        setMoveLog((log) => [...log, moveData]);
+        setMoveLog((prev) => [...prev, moveData]);
+      };
+
+      const handleColorSelected = (hostColor) => {
+        setOpponentColor(hostColor);
+        setMyColor(hostColor === 'w' ? 'b' : 'w');
+        setColorSelected(true);
       };
 
       socket.on('receive-move', handleReceiveMove);
-      return () => { socket.off('receive-move', handleReceiveMove); };
+      socket.on('color-selected', handleColorSelected);
+      socket.on('opponent-disconnected', gestisciDisconnessioneAvversario); 
+      
+      return () => { 
+        socket.off('receive-move', handleReceiveMove); 
+        socket.off('color-selected', handleColorSelected);
+        socket.off('opponent-disconnected', gestisciDisconnessioneAvversario);
+      };
 
     } else {
-      // 2. MODALITÀ AMICO: Il tuo codice originale PeerJS
       const newPeer = new Peer();
       setPeer(newPeer);
 
@@ -195,10 +224,11 @@ function Game({ user, socket }) {
 
       newPeer.on('connection', (connection) => {
         setConn(connection);
+        setIsPeerHost(true); 
         setConnectionError('');
         connection.on('open', () => setConnected(true));
         connection.on('data', handlePeerData);
-        connection.on('close', () => setConnected(false));
+        connection.on('close', gestisciDisconnessioneAvversario); 
       });
 
       return () => { try { newPeer.destroy(); } catch (e) {} };
@@ -209,12 +239,16 @@ function Game({ user, socket }) {
     if (!message || !message.type) return;
     if (message.type === 'move') {
       const moveData = message.data;
-      safeGameMutate((g) => { g.move({ from: moveData.from, to: moveData.to, promotion: moveData.promotion || undefined }); });
+      setGame((g) => {
+        const copy = new Chess(g.fen());
+        try { copy.move({ from: moveData.from, to: moveData.to, promotion: moveData.promotion || undefined }); } catch(e){} 
+        return copy;
+      });
       setLastMoveSquares([moveData.from, moveData.to]);
-      setMoveLog((log) => [...log, moveData]);
+      setMoveLog((prev) => [...prev, moveData]);
     }
     else if (message.type === 'colorSelection') {
-      setOpponentColor(message.color === 'w' ? 'b' : 'w');
+      setOpponentColor(message.color);
       setMyColor(message.color === 'w' ? 'b' : 'w');
       setColorSelected(true);
     }
@@ -224,18 +258,20 @@ function Game({ user, socket }) {
     if (!peer || !opponentId) return;
     setConnectionError('');
     const connection = peer.connect(opponentId);
+    setIsPeerHost(false); 
     connection.on('open', () => { setConnected(true); setConnectionError(''); });
     connection.on('data', handlePeerData);
-    connection.on('close', () => setConnected(false));
+    connection.on('close', gestisciDisconnessioneAvversario); 
     setConn(connection);
   }
 
   function selectColor(color) {
-    if (!conn || !conn.open) return;
     setMyColor(color);
     setOpponentColor(color === 'w' ? 'b' : 'w');
     setColorSelected(true);
-    conn.send({ type: 'colorSelection', color });
+
+    if (mode === 'online') socket.emit('select-color', { to: opponent, color: color });
+    else if (conn && conn.open) conn.send({ type: 'colorSelection', color });
   }
 
   function formatTime(time) {
@@ -244,46 +280,54 @@ function Game({ user, socket }) {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  const customStyles = {};
-  lastMoveSquares.forEach(sq => { customStyles[sq] = { backgroundColor: 'rgba(255,255,0,0.45)' }; });
-  legalMoves.forEach(sq => { customStyles[sq] = { backgroundColor: 'rgba(0,255,0,0.35)' }; });
-  if (inCheckSquare) customStyles[inCheckSquare] = { backgroundColor: 'rgba(255, 0, 0, 0.45)' };
+  const chiudiPartitaESci = () => {
+    if (mode === 'online') socket.emit('end-match', user); 
+    navigate('/home');
+  }
 
-  // ------------------- RENDER -------------------
+  const customStyles = {};
+  if (lastMoveSquares.length) lastMoveSquares.forEach(sq => { customStyles[sq] = { backgroundColor: 'rgba(255,255,0,0.45)' }; });
+  if (legalMoves.length) legalMoves.forEach(sq => { customStyles[sq] = { backgroundColor: 'rgba(0,255,0,0.35)' }; });
+  if (inCheckSquare) customStyles[inCheckSquare] = { backgroundColor: 'rgba(255, 0, 0, 0.45)' };
+  if (selectedSquare) customStyles[selectedSquare] = { backgroundColor: 'rgba(255, 255, 0, 0.4)' };
+
   return (
     <div className="app">
-
-      {/* TUA INTERFACCIA PEERJS (Solo modalità amico) */}
       {mode === 'friend' && !connected && (
-        <div className="peer-setup">
+        <div className="peer-setup" style={{color:'white', textAlign:'center', marginTop:'50px'}}>
+          <h2>Modalità PeerJS</h2>
           <p>Il tuo Peer ID: <strong style={{userSelect: 'all'}}>{peerId || 'Generazione in corso...'}</strong></p>
-          <input type="text" placeholder="Inserisci ID Avversario" value={opponentId} onChange={e => setOpponentId(e.target.value)} />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={connectToOpponent}>Connetti</button>
-            <button onClick={() => { if (peerId) navigator.clipboard?.writeText(peerId); }}>Copia il mio ID</button>
+          <input type="text" placeholder="Inserisci ID Avversario" value={opponentId} onChange={e => setOpponentId(e.target.value)} style={{padding: '10px', margin:'10px'}} />
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button onClick={connectToOpponent} style={{padding: '10px'}}>Connetti</button>
+            <button onClick={() => { if (peerId) navigator.clipboard?.writeText(peerId); }} style={{padding: '10px'}}>Copia il mio ID</button>
           </div>
           {connectionError && <p style={{ color: '#ff6b6b', marginTop: '15px' }}>{connectionError}</p>}
         </div>
       )}
 
-      {/* SCELTA COLORE (Solo modalità amico) */}
-      {mode === 'friend' && connected && !colorSelected && (
-        <div className="color-select">
-          <p>Scegli il tuo colore:</p>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button onClick={() => selectColor('w')}>Bianco</button>
-            <button onClick={() => selectColor('b')}>Nero</button>
-          </div>
+      {connected && !colorSelected && !gameOver && (
+        <div className="color-select" style={{color:'white', textAlign:'center', marginTop:'50px'}}>
+          {(mode === 'friend' && isPeerHost) || (mode === 'online' && isHost) ? (
+            <>
+              <p>{mode === 'online' ? `Partita trovata! Scegli il tuo colore (sfidi ${opponent}):` : 'Avversario connesso! Scegli il tuo colore:'}</p>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                <button onClick={() => selectColor('w')} style={{padding: '10px'}}>Bianco</button>
+                <button onClick={() => selectColor('b')} style={{padding: '10px'}}>Nero</button>
+              </div>
+            </>
+          ) : (
+            <p style={{fontSize: '20px'}}>In attesa che <strong>{mode === 'online' ? opponent : 'l\'avversario'}</strong> scelga il colore...</p>
+          )}
         </div>
       )}
 
-      {/* SCACCHIERA (Entrambe le modalità) */}
-      {connected && colorSelected && (
+      {connected && (colorSelected || gameOver) && (
         <>
           <div className="main-container">
             <div className="left-column">
-              <h3 style={{ marginBottom: '15px' }}>
-                {mode === 'online' ? `Partita Socket.io vs ${opponent}` : 'Partita Amichevole PeerJS'}
+              <h3 style={{ marginBottom: '15px', color:'white' }}>
+                {mode === 'online' ? `${user} vs ${opponent}` : 'Tu vs Avversario (PeerJS)'}
               </h3>
 
               <div className="turn-info">
@@ -294,21 +338,16 @@ function Game({ user, socket }) {
               <Chessboard
                 position={game.fen()}
                 onSquareClick={onSquareClick}
-                onPieceDrop={(from, to) => {
-                  const piece = game.get(from);
-                  if (!piece || piece.color !== myColor) return false;
-                  attemptMove(from, to);
-                  return true;
-                }}
+                onPieceDrop={onPieceDrop}
                 customSquareStyles={customStyles}
-                boardWidth={700}
+                boardWidth={600}
                 boardOrientation={myColor === 'w' ? 'white' : 'black'}
-                arePiecesDraggable={!gameOver && !promotionMove && game.turn() === myColor}
+                arePiecesDraggable={!gameOver && !promotionMove}
               />
 
               {promotionMove && (
-                <div className="promotion-popup">
-                  <p>Scegli promozione:</p>
+                <div className="promotion-popup" style={{background:'white', padding:'10px', borderRadius:'8px', marginTop:'10px'}}>
+                  <p style={{color:'black'}}>Scegli promozione:</p>
                   <div className="promotion-buttons" style={{ display: 'flex', gap: 8 }}>
                     {['q', 'r', 'b', 'n'].map(p => (
                       <button key={p} onClick={() => promotePiece(p)}>
@@ -320,20 +359,20 @@ function Game({ user, socket }) {
               )}
 
               {gameOver && !promotionMove && (
-                <div className="game-over">
+                <div className="game-over" style={{background:'rgba(0,0,0,0.8)', padding:'20px', borderRadius:'10px', color:'white', marginTop:'15px'}}>
                   <p style={{ fontSize: 24, fontWeight: 'bold' }}>Partita Terminata</p>
                   <p>Vincitore: <strong>{winner}</strong></p>
-                  <button onClick={() => navigate('/home')}>Torna alla Dashboard</button>
+                  <button onClick={chiudiPartitaESci} style={{marginTop:'10px', padding:'10px'}}>Torna alla Dashboard</button>
                 </div>
               )}
             </div>
 
             <div className="right-column">
-              <h2>Registro Mosse</h2>
-              <div className="move-log">
+              <h2 style={{color:'white'}}>Registro Mosse</h2>
+              <div className="move-log" style={{color:'white'}}>
                 {moveLog.map((m, i) => (
                   <div key={i} className="move">
-                    <img src={`/pieces/${pieceMap[m.color][m.piece]}.png`} alt={m.piece} />
+                    <img src={`/pieces/${pieceMap[m.color][m.piece]}.png`} alt={m.piece} style={{width: 20}} />
                     <span>{m.from} → {m.to}</span>
                   </div>
                 ))}

@@ -292,32 +292,48 @@ body::before {
   background: rgba(212, 175, 55, 0.2);
 }
 
-/* Login/Register Form Styles (Adattati al nuovo tema) */
+/* Login/Register Form Styles (Più grandi e leggibili) */
 .auth-box {
     background: var(--sidebar-bg);
-    padding: 40px;
-    border-radius: 10px;
+    padding: 50px 40px; 
+    border-radius: 12px;
     border: 1px solid var(--gold-primary);
-    width: 350px;
+    width: 400px; /* Allargato */
     text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
 }
 .auth-input {
     width: 100%;
-    padding: 12px;
-    margin: 10px 0;
+    padding: 15px; /* Spazio interno aumentato */
+    font-size: 1.1rem; /* Testo input più grande */
+    margin: 0;
     background: #222;
     border: 1px solid #444;
     color: white;
-    border-radius: 5px;
+    border-radius: 8px;
+    box-sizing: border-box; /* Evita sbordamenti */
+    outline: none;
+    transition: border-color 0.3s;
+}
+.auth-input:focus {
+    border-color: var(--gold-primary);
 }
 .auth-btn {
     width: 100%;
-    padding: 12px;
+    padding: 15px; /* Bottone più grande */
+    font-size: 1.1rem;
     background: var(--gold-primary);
+    color: #111;
     border: none;
-    font-weight: bold;
+    font-weight: 900;
     margin-top: 10px;
     cursor: pointer;
+    border-radius: 8px;
+    transition: transform 0.2s, background-color 0.2s;
+}
+.auth-btn:hover {
+    transform: translateY(-2px);
+    background-color: var(--gold-hover);
 }
 
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
