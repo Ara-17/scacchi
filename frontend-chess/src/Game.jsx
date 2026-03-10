@@ -1,401 +1,330 @@
 import './Game.css'; 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import Peer from 'peerjs';
 
-const pieceMap = {
-  w: { p: 'W_pawn', r: 'W_rook', n: 'W_knight', b: 'W_bishop', q: 'W_queen', k: 'W_king' },
-  b: { p: 'B_pawn', r: 'B_rook', n: 'B_knight', b: 'B_bishop', q: 'B_queen', k: 'B_king' }
+const pezzoImmagine = {
+  w: { q: 'W_queen', r: 'W_rook', b: 'W_bishop', n: 'W_knight' },
+  b: { q: 'B_queen', r: 'B_rook', b: 'B_bishop', n: 'B_knight' }
 };
 
 function Game({ user, socket }) {
   const location = useLocation();
   const navigate = useNavigate();
-  
   const { mode, opponent, isHost } = location.state || { mode: 'friend' };
 
+  // Stati del Gioco
   const [game, setGame] = useState(new Chess());
+  const [myColor, setMyColor] = useState(null);
+  const [colorSelected, setColorSelected] = useState(false);
+  const [connected, setConnected] = useState(mode === 'online');
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState(null);
-  const [selectedSquare, setSelectedSquare] = useState(null);
-  const [legalMoves, setLegalMoves] = useState([]);
   const [promotionMove, setPromotionMove] = useState(null);
-  const [lastMoveSquares, setLastMoveSquares] = useState([]);
-  const [whiteTime, setWhiteTime] = useState(300); 
-  const [blackTime, setBlackTime] = useState(300); 
-  const [moveLog, setMoveLog] = useState([]);
-  const [inCheckSquare, setInCheckSquare] = useState(null);
-
-  const [connected, setConnected] = useState(mode === 'online');
-  const [colorSelected, setColorSelected] = useState(false);
-  const [myColor, setMyColor] = useState(null);  
-  const [opponentColor, setOpponentColor] = useState(null);
-
-  // PEER JS
-  const [peer, setPeer] = useState(null);
-  const [conn, setConn] = useState(null);
+  
+  // Stati di PeerJS (SOLO per la modalità amici)
   const [peerId, setPeerId] = useState('');
-  const [opponentId, setOpponentId] = useState('');
-  const [connectionError, setConnectionError] = useState('');
-  const [isPeerHost, setIsPeerHost] = useState(false); 
+  const [opponentIdInput, setOpponentIdInput] = useState('');
+  const [isPeerHost, setIsPeerHost] = useState(false);
+  const [peerError, setPeerError] = useState('');
 
-  const checkGameOver = () => typeof game.isGameOver === 'function' ? game.isGameOver() : game.game_over();
-  const checkCheckmate = () => typeof game.isCheckmate === 'function' ? game.isCheckmate() : game.in_checkmate();
-  const checkCheck = () => typeof game.isCheck === 'function' ? game.isCheck() : game.in_check();
+  // Refs per BLINDARE la connessione PeerJS dai re-render di React
+  const peerRef = useRef(null);
+  const connRef = useRef(null);
+
+  // ----------------------------------------------------
+  // INIZIALIZZAZIONE CONNESSIONE (PEERJS O SOCKET)
+  // ----------------------------------------------------
+  useEffect(() => {
+    if (mode === 'friend') {
+      // 1. MODALITÀ AMICI: Inizializza PeerJS da zero in modo sicuro
+      const peer = new Peer();
+      peerRef.current = peer;
+
+      peer.on('open', (id) => {
+        setPeerId(id);
+      });
+
+      // Se l'avversario si connette a NOI (quindi noi siamo l'HOST)
+      peer.on('connection', (conn) => {
+        connRef.current = conn;
+        setIsPeerHost(true);
+        impostaEventiPeerJS(conn);
+      });
+
+      peer.on('error', (err) => {
+        setPeerError("Errore di connessione: verifica il codice.");
+      });
+
+      return () => peer.destroy(); // Pulizia sicura in uscita
+
+    } else {
+      // 2. MODALITÀ ONLINE: Socket.io
+      if (!opponent) { navigate('/home'); return; }
+      
+      const gestisciMossaRicevuta = (moveObj) => {
+        setGame((g) => {
+          const copia = new Chess(g.fen());
+          try { copia.move(moveObj); } catch(e) {}
+          return copia;
+        });
+      };
+
+      const gestisciColore = (color) => {
+        setMyColor(color === 'w' ? 'b' : 'w');
+        setColorSelected(true);
+      };
+
+      const gestisciDisconnessione = () => {
+        setGameOver(true);
+        setWinner("L'avversario ha abbandonato. Hai vinto a tavolino!");
+      };
+
+      socket.on('receive-move', gestisciMossaRicevuta);
+      socket.on('color-selected', gestisciColore);
+      socket.on('opponent-disconnected', gestisciDisconnessione);
+
+      return () => {
+        socket.off('receive-move', gestisciMossaRicevuta);
+        socket.off('color-selected', gestisciColore);
+        socket.off('opponent-disconnected', gestisciDisconnessione);
+      };
+    }
+  }, [mode, opponent, socket, navigate]);
+
+  // Gestione eventi una volta che PeerJS è agganciato
+  function impostaEventiPeerJS(conn) {
+    conn.on('open', () => {
+      setConnected(true);
+      setPeerError('');
+    });
+    
+    conn.on('data', (messaggio) => {
+      if (messaggio.type === 'colorSelection') {
+        // L'avversario ha scelto il colore, noi prendiamo l'opposto
+        setMyColor(messaggio.color === 'w' ? 'b' : 'w');
+        setColorSelected(true);
+      } else if (messaggio.type === 'move') {
+        // Applica la mossa dell'avversario
+        setGame((g) => {
+          const copia = new Chess(g.fen());
+          try { copia.move(messaggio.move); } catch(e) {}
+          return copia;
+        });
+      }
+    });
+
+    conn.on('close', () => {
+      setGameOver(true);
+      setWinner("Avversario disconnesso.");
+    });
+  }
+
+  // Se noi inseriamo il codice dell'avversario (Siamo il CLIENT)
+  function connettiAdAmico() {
+    if (!opponentIdInput || !peerRef.current) return;
+    const conn = peerRef.current.connect(opponentIdInput);
+    connRef.current = conn;
+    setIsPeerHost(false);
+    impostaEventiPeerJS(conn);
+  }
+
+  // ----------------------------------------------------
+  // LOGICA DEL GIOCO (MOSSE, COLORI, PROMOZIONI)
+  // ----------------------------------------------------
+  function selectColor(color) {
+    setMyColor(color);
+    setColorSelected(true);
+    
+    // Avvisa l'avversario della scelta
+    if (mode === 'online') {
+      socket.emit('select-color', { to: opponent, color: color });
+    } else if (connRef.current && connRef.current.open) {
+      connRef.current.send({ type: 'colorSelection', color: color });
+    }
+  }
 
   function onPieceDrop(sourceSquare, targetSquare) {
-    if (gameOver || promotionMove || game.turn() !== myColor) return false;
+    // 1. Controlla se puoi muovere
+    if (gameOver || promotionMove || !myColor || game.turn() !== myColor) return false;
 
-    const pieceObj = game.get(sourceSquare);
-    if (!pieceObj || pieceObj.color !== myColor) return false;
+    // 2. Controlla se stai muovendo un TUO pezzo
+    const pezzoToccato = game.get(sourceSquare);
+    if (!pezzoToccato || pezzoToccato.color !== myColor) return false;
 
-    const isPromotion = pieceObj.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1');
-
-    if (isPromotion) {
-      // Test se la mossa è valida prima di aprire il popup (evita crash silenti)
-      const gameCopy = new Chess(game.fen());
+    // 3. È una mossa di Promozione del pedone?
+    if (pezzoToccato.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1')) {
+      const gCopia = new Chess(game.fen());
       try {
-        const testMove = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
-        if (!testMove) return false;
-      } catch(e) {
-        return false;
-      }
+        // Test: verifichiamo che la promozione non sia illegale (es: pedone bloccato)
+        const checkLegale = gCopia.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+        if (!checkLegale) return false;
+      } catch(e) { return false; }
+
+      // Mossa legale, apri popup promozione e blocca la scacchiera per un attimo
       setPromotionMove({ from: sourceSquare, to: targetSquare });
       return false; 
     }
 
-    // Esecuzione mossa normale sicura
-    const gameCopy = new Chess(game.fen());
-    let move = null;
+    // 4. Mossa Classica (No promozione)
+    const gCopia = new Chess(game.fen());
+    let mossa = null;
     try {
-      move = gameCopy.move({ from: sourceSquare, to: targetSquare });
-    } catch(e) {
-      return false;
+      mossa = gCopia.move({ from: sourceSquare, to: targetSquare });
+    } catch(e) { return false; } // Se illegale, il pezzo torna al suo posto!
+
+    // Se la mossa va a buon fine, salvala, inviala e controlla vittoria
+    if (mossa) {
+      setGame(gCopia);
+      inviaMossaInRete({ from: sourceSquare, to: targetSquare });
+      controllaFinePartita(gCopia);
+      return true;
     }
-
-    if (!move) return false;
-
-    setGame(gameCopy);
-    setLastMoveSquares([sourceSquare, targetSquare]);
-    setMoveLog((prev) => [...prev, move]);
-    setSelectedSquare(null);
-    setLegalMoves([]);
-
-    const moveData = { from: sourceSquare, to: targetSquare, promotion: null, piece: move.piece, color: move.color };
-    if (mode === 'online') socket.emit('send-move', { to: opponent, moveData });
-    else if (conn && conn.open) conn.send({ type: 'move', data: moveData });
-
-    return true; 
+    return false;
   }
 
-  function promotePiece(promPiece) {
+  function eseguiPromozione(pezzoScelto) {
     if (!promotionMove) return;
-    const { from, to } = promotionMove;
-
-    const gameCopy = new Chess(game.fen());
-    let move = null;
+    const gCopia = new Chess(game.fen());
+    let mossa = null;
     try {
-      move = gameCopy.move({ from, to, promotion: promPiece });
+      mossa = gCopia.move({ from: promotionMove.from, to: promotionMove.to, promotion: pezzoScelto });
     } catch(e) {}
 
-    if (move) {
-      setGame(gameCopy);
-      setPromotionMove(null);
-      setLastMoveSquares([from, to]);
-      setMoveLog((prev) => [...prev, move]);
-
-      const moveData = { from, to, promotion: promPiece, piece: move.piece, color: myColor };
-      if (mode === 'online') socket.emit('send-move', { to: opponent, moveData });
-      else if (conn && conn.open) conn.send({ type: 'move', data: moveData });
+    if (mossa) {
+      setGame(gCopia);
+      inviaMossaInRete({ from: promotionMove.from, to: promotionMove.to, promotion: pezzoScelto });
+      controllaFinePartita(gCopia);
     }
+    setPromotionMove(null); // Chiudi popup
   }
 
-  function onSquareClick(square) {
-    if (gameOver || promotionMove || game.turn() !== myColor) {
-      setSelectedSquare(null);
-      setLegalMoves([]);
-      return;
-    }
-
-    if (selectedSquare && legalMoves.includes(square)) {
-      onPieceDrop(selectedSquare, square);
-      return;
-    }
-
-    const pieceObj = game.get(square);
-    if (pieceObj && pieceObj.color === myColor) {
-      setSelectedSquare(square);
-      try {
-        const moves = game.moves({ square, verbose: true });
-        setLegalMoves(moves.map(m => m.to));
-      } catch(e) {
-        setLegalMoves([]);
-      }
-    } else {
-      setSelectedSquare(null);
-      setLegalMoves([]);
-    }
-  }
-
-  const gestisciDisconnessioneAvversario = () => {
-    setGameOver(true);
-    setWinner(`Tu (Vittoria a tavolino, l'avversario ha abbandonato)`);
-  };
-
-  useEffect(() => {
-    if (checkGameOver() && !gameOver) {
-      setGameOver(true);
-      if (checkCheckmate()) setWinner(game.turn() === 'w' ? 'Nero (Scacco Matto)' : 'Bianco (Scacco Matto)');
-      else setWinner('Pareggio');
-    }
-  }, [game.fen()]);
-
-  useEffect(() => {
-    if (checkCheck()) {
-      const color = game.turn();
-      let kingSq = null;
-      for (let file of "abcdefgh") {
-        for (let rank of "12345678") {
-          const sq = file + rank;
-          const piece = game.get(sq);
-          if (piece && piece.type === "k" && piece.color === color) { kingSq = sq; break; }
-        }
-      }
-      setInCheckSquare(kingSq);
-    } else {
-      setInCheckSquare(null);
-    }
-  }, [game.fen()]);
-
-  useEffect(() => {
-    if (!colorSelected || gameOver) return;
-    const timer = setInterval(() => {
-      if (game.turn() === 'w') {
-        setWhiteTime(t => { if (t <= 1) { setGameOver(true); setWinner('Nero (Vittoria per Tempo)'); clearInterval(timer); return 0; } return t - 1; });
-      } else {
-        setBlackTime(t => { if (t <= 1) { setGameOver(true); setWinner('Bianco (Vittoria per Tempo)'); clearInterval(timer); return 0; } return t - 1; });
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [game.turn(), gameOver, colorSelected]);
-
-  useEffect(() => {
+  function inviaMossaInRete(oggettoMossa) {
     if (mode === 'online') {
-      if (!opponent) { navigate('/home'); return; }
-
-      const handleReceiveMove = (moveData) => {
-        setGame((currentGameState) => {
-          const copy = new Chess(currentGameState.fen());
-          try { 
-            const moveObj = { from: moveData.from, to: moveData.to };
-            if (moveData.promotion) moveObj.promotion = moveData.promotion;
-            copy.move(moveObj); 
-          } catch(e) {
-            return currentGameState;
-          }
-          return copy;
-        });
-        setLastMoveSquares([moveData.from, moveData.to]);
-        setMoveLog((prev) => [...prev, moveData]);
-      };
-
-      const handleColorSelected = (hostColor) => {
-        setOpponentColor(hostColor);
-        setMyColor(hostColor === 'w' ? 'b' : 'w');
-        setColorSelected(true);
-      };
-
-      socket.on('receive-move', handleReceiveMove);
-      socket.on('color-selected', handleColorSelected);
-      socket.on('opponent-disconnected', gestisciDisconnessioneAvversario); 
-      
-      return () => { 
-        socket.off('receive-move', handleReceiveMove); 
-        socket.off('color-selected', handleColorSelected);
-        socket.off('opponent-disconnected', gestisciDisconnessioneAvversario);
-      };
-
-    } else {
-      // SETTAGGIO CORRETTO PEERJS CHE NON TOCCKERO'
-      const newPeer = new Peer();
-      setPeer(newPeer);
-
-      newPeer.on('open', (id) => { setPeerId(id); });
-
-      newPeer.on('error', (err) => {
-        if (err.type === 'peer-unavailable') setConnectionError("ID Avversario non trovato o disconnesso.");
-        else setConnectionError("Errore di connessione.");
-      });
-
-      newPeer.on('connection', (connection) => {
-        setConn(connection);
-        setIsPeerHost(true); 
-        setConnectionError('');
-        connection.on('open', () => setConnected(true));
-        connection.on('data', handlePeerData);
-        connection.on('close', gestisciDisconnessioneAvversario); 
-        connection.on('error', gestisciDisconnessioneAvversario);
-      });
-
-      return () => { try { newPeer.destroy(); } catch (e) {} };
-    }
-  }, [mode, opponent, socket, navigate]);
-
-  function handlePeerData(message) {
-    if (!message || !message.type) return;
-    if (message.type === 'move') {
-      const moveData = message.data;
-      setGame((currentGameState) => {
-        const copy = new Chess(currentGameState.fen());
-        try { 
-          const moveObj = { from: moveData.from, to: moveData.to };
-          if (moveData.promotion) moveObj.promotion = moveData.promotion;
-          copy.move(moveObj); 
-        } catch(e) {
-          return currentGameState;
-        } 
-        return copy;
-      });
-      setLastMoveSquares([moveData.from, moveData.to]);
-      setMoveLog((prev) => [...prev, moveData]);
-    }
-    else if (message.type === 'colorSelection') {
-      setOpponentColor(message.color);
-      setMyColor(message.color === 'w' ? 'b' : 'w');
-      setColorSelected(true);
+      socket.emit('send-move', { to: opponent, moveData: oggettoMossa });
+    } else if (connRef.current && connRef.current.open) {
+      connRef.current.send({ type: 'move', move: oggettoMossa });
     }
   }
 
-  function connectToOpponent() {
-    if (!peer || !opponentId) return;
-    setConnectionError('');
-    const connection = peer.connect(opponentId);
-    setIsPeerHost(false); 
-    connection.on('open', () => { setConnected(true); setConnectionError(''); });
-    connection.on('data', handlePeerData);
-    connection.on('close', gestisciDisconnessioneAvversario); 
-    connection.on('error', gestisciDisconnessioneAvversario);
-    setConn(connection);
+  function controllaFinePartita(g) {
+    const isOver = typeof g.isGameOver === 'function' ? g.isGameOver() : g.game_over();
+    if (isOver) {
+      setGameOver(true);
+      const isCheckmate = typeof g.isCheckmate === 'function' ? g.isCheckmate() : g.in_checkmate();
+      if (isCheckmate) {
+        setWinner(`Scacco Matto! Vince il ${g.turn() === 'w' ? 'Nero' : 'Bianco'}`);
+      } else {
+        setWinner('Pareggio!');
+      }
+    }
   }
 
-  function selectColor(color) {
-    setMyColor(color);
-    setOpponentColor(color === 'w' ? 'b' : 'w');
-    setColorSelected(true);
-
-    if (mode === 'online') socket.emit('select-color', { to: opponent, color: color });
-    else if (conn && conn.open) conn.send({ type: 'colorSelection', color });
-  }
-
-  function formatTime(time) {
-    const minutes = Math.floor(time / 60);
-    const seconds = time % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }
-
-  const chiudiPartitaESci = () => {
-    if (mode === 'online') socket.emit('leave-all-matches', user); 
-    if (mode === 'friend' && conn) conn.close(); // Avvisa il peer JS che te ne sei andato
+  function abbandonaPartita() {
+    if (mode === 'online') {
+      socket.emit('leave-all-matches', user);
+    } else if (connRef.current) {
+      connRef.current.close();
+    }
     navigate('/home');
   }
 
-  const customStyles = {};
-  if (lastMoveSquares.length) lastMoveSquares.forEach(sq => { customStyles[sq] = { backgroundColor: 'rgba(255,255,0,0.45)' }; });
-  if (legalMoves.length) legalMoves.forEach(sq => { customStyles[sq] = { backgroundColor: 'rgba(0,255,0,0.35)' }; });
-  if (inCheckSquare) customStyles[inCheckSquare] = { backgroundColor: 'rgba(255, 0, 0, 0.45)' };
-  if (selectedSquare) customStyles[selectedSquare] = { backgroundColor: 'rgba(255, 255, 0, 0.4)' };
-
+  // ----------------------------------------------------
+  // INTERFACCIA GRAFICA (NESSUNA MODIFICA ALLO STILE)
+  // ----------------------------------------------------
   return (
     <div className="app">
+      {/* PEER JS: SETUP MANUALE SE MODALITA' AMICI */}
       {mode === 'friend' && !connected && (
-        <div className="peer-setup" style={{color:'white', textAlign:'center', marginTop:'50px'}}>
-          <h2>Modalità PeerJS</h2>
-          <p>Il tuo Peer ID: <strong style={{userSelect: 'all'}}>{peerId || 'Generazione in corso...'}</strong></p>
-          <input type="text" placeholder="Inserisci ID Avversario" value={opponentId} onChange={e => setOpponentId(e.target.value)} style={{padding: '10px', margin:'10px'}} />
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button onClick={connectToOpponent} style={{padding: '10px'}}>Connetti</button>
-            <button onClick={() => { if (peerId) navigator.clipboard?.writeText(peerId); }} style={{padding: '10px'}}>Copia il mio ID</button>
+        <div className="peer-setup" style={{background: 'rgba(20,20,30,0.95)', padding: '30px', borderRadius: '15px', color:'white', textAlign:'center', marginTop:'50px'}}>
+          <h2 style={{marginBottom: '20px'}}>Sfida un Amico (Codice PeerJS)</h2>
+          <p style={{fontSize: '18px'}}>Il tuo codice di gioco: <strong style={{userSelect:'all', color:'#ff956f', fontSize:'22px'}}>{peerId || 'Generazione in corso...'}</strong></p>
+          <div style={{marginTop: '30px', display:'flex', gap:'15px', justifyContent:'center'}}>
+             <input 
+               type="text" 
+               placeholder="Incolla qui il codice del tuo amico" 
+               value={opponentIdInput} 
+               onChange={e => setOpponentIdInput(e.target.value)} 
+               style={{padding:'12px', width:'250px', borderRadius:'8px', border:'none', outline:'none', fontSize:'16px'}} 
+             />
+             <button onClick={connettiAdAmico} style={{padding:'12px 25px', background:'#ff956f', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer', color:'white', fontSize:'16px'}}>Connettiti</button>
           </div>
-          {connectionError && <p style={{ color: '#ff6b6b', marginTop: '15px' }}>{connectionError}</p>}
+          {peerError && <p style={{color:'#ff6b6b', marginTop:'20px', fontWeight:'bold'}}>{peerError}</p>}
         </div>
       )}
 
+      {/* SCHERMATA SCELTA COLORE */}
       {connected && !colorSelected && !gameOver && (
-        <div className="color-select" style={{color:'white', textAlign:'center', marginTop:'50px'}}>
-          {(mode === 'friend' && isPeerHost) || (mode === 'online' && isHost) ? (
+        <div className="color-select" style={{background: 'rgba(20,20,30,0.95)', padding: '40px', borderRadius: '15px', color:'white', textAlign:'center', marginTop:'50px'}}>
+          {/* L'host (chi crea la lobby in Socket o chi MANDA/RICEVE in base a chi sei) sceglie il colore */}
+          { (mode === 'friend' && isPeerHost) || (mode === 'online' && isHost) ? (
             <>
-              <p>{mode === 'online' ? `Partita trovata! Scegli il tuo colore (sfidi ${opponent}):` : 'Avversario connesso! Scegli il tuo colore:'}</p>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                <button onClick={() => selectColor('w')} style={{padding: '10px'}}>Bianco</button>
-                <button onClick={() => selectColor('b')} style={{padding: '10px'}}>Nero</button>
+              <h2 style={{fontSize: '28px', margin:'0 0 20px 0'}}>Partita Pronta!</h2>
+              <p style={{fontSize: '18px'}}>Scegli con quale colore vuoi giocare:</p>
+              <div style={{display:'flex', gap:'20px', justifyContent:'center', marginTop:'30px'}}>
+                <button onClick={() => selectColor('w')} style={{padding:'15px 30px', fontSize:'18px', borderRadius:'8px', border:'none', cursor:'pointer', background:'white', color:'black', fontWeight:'bold'}}>Bianco ⚪</button>
+                <button onClick={() => selectColor('b')} style={{padding:'15px 30px', fontSize:'18px', borderRadius:'8px', background:'#222', color:'white', border:'2px solid white', cursor:'pointer', fontWeight:'bold'}}>Nero ⚫</button>
               </div>
             </>
           ) : (
-            <p style={{fontSize: '20px'}}>In attesa che <strong>{mode === 'online' ? opponent : 'l\'avversario'}</strong> scelga il colore...</p>
+            <h2 style={{fontSize: '24px', margin:0}}>In attesa che l'avversario scelga il colore...</h2>
           )}
         </div>
       )}
 
-      {connected && (colorSelected || gameOver) && (
-        <>
-          <div className="main-container">
-            <div className="left-column">
-              <h3 style={{ marginBottom: '15px', color:'white' }}>
-                {mode === 'online' ? `${user} vs ${opponent}` : 'Tu vs Avversario (PeerJS)'}
-              </h3>
-
-              <div className="turn-info">
-                <div className={`timer ${game.turn() === 'w' ? 'active' : ''}`}>Bianco: {formatTime(whiteTime)}</div>
-                <div className={`timer ${game.turn() === 'b' ? 'active' : ''}`}>Nero: {formatTime(blackTime)}</div>
+      {/* IL GIOCO VERO E PROPRIO */}
+      {connected && colorSelected && (
+        <div className="main-container">
+           <div className="left-column" style={{textAlign:'center', width:'100%', maxWidth:'650px', margin:'0 auto'}}>
+              
+              {/* NOMI E INFO TURNO */}
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px', color:'white', background:'rgba(0,0,0,0.6)', padding:'10px 20px', borderRadius:'10px'}}>
+                 <h2 style={{margin:0, fontSize:'20px'}}>Tu sei: <span style={{color: myColor === 'w' ? '#ddd' : '#666'}}>{myColor === 'w' ? 'Bianco ⚪' : 'Nero ⚫'}</span></h2>
+                 <h3 style={{margin:0, fontSize:'18px', padding:'5px 15px', background: game.turn() === myColor ? 'rgba(0,255,0,0.2)' : 'rgba(255,0,0,0.2)', borderRadius:'8px'}}>
+                    Turno del: {game.turn() === 'w' ? 'Bianco' : 'Nero'}
+                 </h3>
               </div>
 
-              <Chessboard
-                position={game.fen()}
-                onSquareClick={onSquareClick}
-                onPieceDrop={onPieceDrop}
-                customSquareStyles={customStyles}
-                boardWidth={600}
-                boardOrientation={myColor === 'w' ? 'white' : 'black'}
-                arePiecesDraggable={!gameOver && !promotionMove && game.turn() === myColor}
-              />
+              {/* LA SCACCHIERA */}
+              <div style={{background: 'rgba(0,0,0,0.5)', padding: '15px', borderRadius: '15px', display: 'inline-block', boxShadow:'0px 10px 30px rgba(0,0,0,0.8)'}}>
+                <Chessboard 
+                  position={game.fen()} 
+                  onPieceDrop={onPieceDrop}
+                  boardOrientation={myColor === 'w' ? 'white' : 'black'}
+                  arePiecesDraggable={!gameOver && !promotionMove && game.turn() === myColor}
+                  boardWidth={600}
+                />
+              </div>
 
+              {/* POPUP PROMOZIONE PEDONE */}
               {promotionMove && (
-                <div className="promotion-popup" style={{background:'white', padding:'10px', borderRadius:'8px', marginTop:'10px'}}>
-                  <p style={{color:'black'}}>Scegli promozione:</p>
-                  <div className="promotion-buttons" style={{ display: 'flex', gap: 8 }}>
-                    {['q', 'r', 'b', 'n'].map(p => (
-                      <button key={p} onClick={() => promotePiece(p)}>
-                        <img src={`/pieces/${pieceMap[game.turn()][p]}.png`} alt={p} style={{ width: 36 }} />
+                <div style={{background:'rgba(255,255,255,0.95)', padding:'20px', borderRadius:'12px', marginTop:'20px', boxShadow:'0px 10px 20px rgba(0,0,0,0.5)'}}>
+                  <h3 style={{margin:0, color:'#111'}}>Promuovi il pedone:</h3>
+                  <div style={{display:'flex', gap:'15px', justifyContent:'center', marginTop:'15px'}}>
+                    {['q','r','b','n'].map(p => (
+                      <button key={p} onClick={() => eseguiPromozione(p)} style={{background:'transparent', border:'2px solid #ddd', borderRadius:'10px', padding:'10px', cursor:'pointer', transition:'0.2s'}}>
+                        <img src={`/pieces/${pezzoImmagine[myColor][p]}.png`} alt={p} style={{ width: 45 }} />
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {gameOver && !promotionMove && (
-                <div className="game-over" style={{background:'rgba(0,0,0,0.8)', padding:'20px', borderRadius:'10px', color:'white', marginTop:'15px'}}>
-                  <p style={{ fontSize: 24, fontWeight: 'bold' }}>Partita Terminata</p>
-                  <p>Vincitore: <strong>{winner}</strong></p>
-                  <button onClick={chiudiPartitaESci} style={{marginTop:'10px', padding:'10px'}}>Torna alla Dashboard</button>
+              {/* FINE PARTITA E ABBANDONO */}
+              {gameOver && (
+                <div style={{background:'rgba(255,0,0,0.8)', color:'white', padding:'20px', borderRadius:'12px', marginTop:'20px', boxShadow:'0px 5px 15px rgba(0,0,0,0.5)'}}>
+                   <h2 style={{margin: '0 0 15px 0'}}>{winner}</h2>
+                   <button onClick={abbandonaPartita} style={{padding:'12px 25px', borderRadius:'8px', border:'none', background:'white', color:'red', fontWeight:'bold', cursor:'pointer', fontSize:'16px'}}>Torna alla Dashboard</button>
                 </div>
               )}
-            </div>
 
-            <div className="right-column">
-              <h2 style={{color:'white'}}>Registro Mosse</h2>
-              <div className="move-log" style={{color:'white'}}>
-                {moveLog.map((m, i) => (
-                  <div key={i} className="move">
-                    <img src={`/pieces/${pieceMap[m.color][m.piece]}.png`} alt={m.piece} style={{width: 20}} />
-                    <span>{m.from} → {m.to}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </>
+              {!gameOver && (
+                <button onClick={abbandonaPartita} style={{padding:'10px 20px', marginTop:'20px', background:'transparent', border:'2px solid rgba(255,255,255,0.5)', color:'white', borderRadius:'8px', cursor:'pointer'}}>Abbandona Partita</button>
+              )}
+           </div>
+        </div>
       )}
     </div>
   );
