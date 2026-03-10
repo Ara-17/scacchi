@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const MATCH_HISTORY = [
-  { id: 1, opponent: 'MagnusC', result: 'WIN', eloDiff: '+12' },
-  { id: 2, opponent: 'HikaruN', result: 'LOSS', eloDiff: '-8' },
-  { id: 3, opponent: 'GothamChess', result: 'WIN', eloDiff: '+15' }
-];
-
 function Home({ user, socket, setUser }) {
   const navigate = useNavigate();
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [isSearching, setIsSearching] = useState(false); 
+  const [elo, setElo] = useState(1200);
+  const [matchHistory, setMatchHistory] = useState([]);
 
   useEffect(() => {
+    // Carica Dati Reali (Elo e Storico)
+    fetch('http://localhost:3001/api/userdata', {credentials: 'include'})
+      .then(res => res.json())
+      .then(data => {
+        if(data.elo) setElo(data.elo);
+        if(data.history) setMatchHistory(data.history);
+      })
+      .catch(err => console.error(err));
+
     socket.on('online-users', (users) => setOnlineUsers(users));
     
-    // Sfida ricevuta dalla Sidebar (Socket.io)
     socket.on('challenge-request', ({ from }) => {
       if (window.confirm(`Sfida diretta da ${from}. Accetti?`)) {
         socket.emit('challenge-accepted', { from, to: user });
@@ -31,7 +35,6 @@ function Home({ user, socket, setUser }) {
     
     socket.on('challenge-rejected', ({ to }) => alert(`La tua sfida a ${to} è stata rifiutata.`));
 
-    // Partita Casuale trovata dal Matchmaking (Socket.io)
     socket.on('match-found', ({ opponent, isHost }) => {
       setIsSearching(false);
       navigate('/game', { state: { mode: 'online', opponent, isHost } });
@@ -47,25 +50,22 @@ function Home({ user, socket, setUser }) {
   }, [socket, user, navigate]);
 
   const handleLogout = async () => {
-    await fetch('http://localhost:3001/logout', { method: 'POST' });
+    await fetch('http://localhost:3001/logout', { method: 'POST', credentials: 'include' });
     socket.emit('set-offline', user);
     socket.disconnect();
     setUser(null);
   };
 
-  // Clic su un utente dalla lista -> Usa Socket.io
   const inviaSfida = (targetUser) => {
     socket.emit('challenge', { from: user, to: targetUser });
     alert(`Sfida inviata a ${targetUser}. In attesa di risposta...`);
   };
 
-  // Matchmaking Casuale -> Usa Socket.io
   const giocaOnlineOra = () => {
     setIsSearching(true);
     socket.emit('find-random-match', user);
   };
 
-  // Sfida Manuale -> Usa PeerJS
   const sfidaAmico = () => {
     navigate('/game', { state: { mode: 'friend' } });
   };
@@ -76,22 +76,37 @@ function Home({ user, socket, setUser }) {
         <div className="user-profile">
           <img src="https://cdn-icons-png.flaticon.com/512/147/147142.png" alt="Avatar" className="avatar-large" />
           <h2 className="username-display">{user}</h2>
-          <div className="elo-display">ELO 1250</div>
+          <div className="elo-display">ELO {elo}</div>
         </div>
 
         <div className="section-title">Storico Partite</div>
         <div className="history-list">
-          {MATCH_HISTORY.map(match => (
-            <div key={match.id} className="match-item">
-              <span>vs {match.opponent}</span>
-              <span className={`match-result ${match.result.toLowerCase()}`}>{match.result} ({match.eloDiff})</span>
-            </div>
-          ))}
+          {matchHistory.length === 0 ? <p style={{color: '#666', fontSize: '0.9rem'}}>Nessuna partita giocata</p> : 
+            matchHistory.map(match => {
+              const isBianco = match.giocatore_bianco === user;
+              const avversario = isBianco ? match.giocatore_nero : match.giocatore_bianco;
+              const variazione = isBianco ? match.variazione_bianco : match.variazione_nero;
+              let esito = 'PATTA';
+              let cssClass = 'draw';
+              if ((isBianco && match.risultato === '1-0') || (!isBianco && match.risultato === '0-1')) {
+                esito = 'VITTORIA'; cssClass = 'win';
+              } else if ((isBianco && match.risultato === '0-1') || (!isBianco && match.risultato === '1-0')) {
+                esito = 'SCONFITTA'; cssClass = 'loss';
+              }
+
+              return (
+                <div key={match.id} className="match-item">
+                  <span>vs {avversario}</span>
+                  <span className={`match-result ${cssClass}`}>{esito} ({variazione > 0 ? '+'+variazione : variazione})</span>
+                </div>
+              );
+            })
+          }
         </div>
 
         <div className="section-title">Amici Online ({onlineUsers.length - 1 > 0 ? onlineUsers.length - 1 : 0})</div>
         <div className="friends-section">
-          <ul className="user_list">
+          <ul className="user_list" style={{listStyle: 'none', padding: 0, margin: 0}}>
             {onlineUsers.map((u) => (
               u !== user && (
                 <li key={u} className="friend-item" onClick={() => inviaSfida(u)} title={`Sfida ${u} direttamente!`}>
