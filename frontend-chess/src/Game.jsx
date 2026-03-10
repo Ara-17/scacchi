@@ -45,38 +45,41 @@ function Game({ user, socket }) {
   const checkCheckmate = () => typeof game.isCheckmate === 'function' ? game.isCheckmate() : game.in_checkmate();
   const checkCheck = () => typeof game.isCheck === 'function' ? game.isCheck() : game.in_check();
 
-  // LA FUNZIONE BLINDATA: Applica fisicamente la mossa
-  function executeMove(moveObj) {
-    try {
-      const gameCopy = new Chess(game.fen());
-      const move = gameCopy.move(moveObj);
-      if (move) {
-         setGame(gameCopy);
-         return move;
-      }
-    } catch(e) {}
-    return null;
-  }
-
   function onPieceDrop(sourceSquare, targetSquare) {
     if (gameOver || promotionMove || game.turn() !== myColor) return false;
 
-    // Controlla se è una mossa di promozione
-    const piece = game.get(sourceSquare);
-    const isPromotion = piece && piece.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1');
+    const pieceObj = game.get(sourceSquare);
+    if (!pieceObj || pieceObj.color !== myColor) return false;
+
+    const isPromotion = pieceObj.type === 'p' && (targetSquare[1] === '8' || targetSquare[1] === '1');
 
     if (isPromotion) {
-       setPromotionMove({ from: sourceSquare, to: targetSquare });
-       return false; // Ferma il pezzo, aspetta il popup
+      // Test se la mossa è valida prima di aprire il popup (evita crash silenti)
+      const gameCopy = new Chess(game.fen());
+      try {
+        const testMove = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+        if (!testMove) return false;
+      } catch(e) {
+        return false;
+      }
+      setPromotionMove({ from: sourceSquare, to: targetSquare });
+      return false; 
     }
 
-    // Mossa classica
-    const move = executeMove({ from: sourceSquare, to: targetSquare });
-    if (!move) return false; // Mossa illegale
+    // Esecuzione mossa normale sicura
+    const gameCopy = new Chess(game.fen());
+    let move = null;
+    try {
+      move = gameCopy.move({ from: sourceSquare, to: targetSquare });
+    } catch(e) {
+      return false;
+    }
 
-    // Aggiornamenti UI e Invio
+    if (!move) return false;
+
+    setGame(gameCopy);
     setLastMoveSquares([sourceSquare, targetSquare]);
-    setMoveLog(prev => [...prev, move]);
+    setMoveLog((prev) => [...prev, move]);
     setSelectedSquare(null);
     setLegalMoves([]);
 
@@ -91,8 +94,14 @@ function Game({ user, socket }) {
     if (!promotionMove) return;
     const { from, to } = promotionMove;
 
-    const move = executeMove({ from, to, promotion: promPiece });
+    const gameCopy = new Chess(game.fen());
+    let move = null;
+    try {
+      move = gameCopy.move({ from, to, promotion: promPiece });
+    } catch(e) {}
+
     if (move) {
+      setGame(gameCopy);
       setPromotionMove(null);
       setLastMoveSquares([from, to]);
       setMoveLog((prev) => [...prev, move]);
@@ -135,21 +144,6 @@ function Game({ user, socket }) {
     setWinner(`Tu (Vittoria a tavolino, l'avversario ha abbandonato)`);
   };
 
-  // CONTROLLO DISCONNESSIONI (Chiusura scheda/tasto indietro)
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (mode === 'online' && !gameOver) socket.emit('end-match', user);
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Quando il componente smonta (es: torna alla home)
-      if (mode === 'online' && !gameOver) socket.emit('end-match', user);
-    };
-  }, [mode, gameOver, socket, user]);
-
   useEffect(() => {
     if (checkGameOver() && !gameOver) {
       setGameOver(true);
@@ -187,7 +181,6 @@ function Game({ user, socket }) {
     return () => clearInterval(timer);
   }, [game.turn(), gameOver, colorSelected]);
 
-  // SOCKET & CONNESSIONE
   useEffect(() => {
     if (mode === 'online') {
       if (!opponent) { navigate('/home'); return; }
@@ -225,6 +218,7 @@ function Game({ user, socket }) {
       };
 
     } else {
+      // SETTAGGIO CORRETTO PEERJS CHE NON TOCCKERO'
       const newPeer = new Peer();
       setPeer(newPeer);
 
@@ -242,6 +236,7 @@ function Game({ user, socket }) {
         connection.on('open', () => setConnected(true));
         connection.on('data', handlePeerData);
         connection.on('close', gestisciDisconnessioneAvversario); 
+        connection.on('error', gestisciDisconnessioneAvversario);
       });
 
       return () => { try { newPeer.destroy(); } catch (e) {} };
@@ -281,6 +276,7 @@ function Game({ user, socket }) {
     connection.on('open', () => { setConnected(true); setConnectionError(''); });
     connection.on('data', handlePeerData);
     connection.on('close', gestisciDisconnessioneAvversario); 
+    connection.on('error', gestisciDisconnessioneAvversario);
     setConn(connection);
   }
 
@@ -300,7 +296,8 @@ function Game({ user, socket }) {
   }
 
   const chiudiPartitaESci = () => {
-    if (mode === 'online') socket.emit('end-match', user); 
+    if (mode === 'online') socket.emit('leave-all-matches', user); 
+    if (mode === 'friend' && conn) conn.close(); // Avvisa il peer JS che te ne sei andato
     navigate('/home');
   }
 

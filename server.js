@@ -41,7 +41,6 @@ function aggiornaListaOnline() {
   io.emit('online-users', users);
 }
 
-// --- API ROUTES ---
 app.post('/register', (req, res) => {
   const { username, password, email, nome, cognome, cf, cell } = req.body;
   const sql = "INSERT INTO utente (nome, cognome, username, email, password, cf, cell) VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -80,7 +79,6 @@ app.post('/logout', (req, res) => {
     res.json({ message: "Logout effettuato" });
 });
 
-// --- SOCKET.IO LOGIC ---
 io.on('connection', (socket) => {
   
   socket.on('set-online', (username) => {
@@ -138,8 +136,10 @@ io.on('connection', (socket) => {
     if (userTo && userTo.online) io.to(userTo.socketId).emit('receive-move', moveData);
   });
 
-  // Uscita volontaria o cambio di url/scheda (richiamato da React)
-  socket.on('end-match', (username) => {
+  // NUOVA LOGICA: Abbandono sicuro (risolve il crash dei pezzi congelati)
+  socket.on('leave-all-matches', (username) => {
+     if (matchQueue === username) matchQueue = null;
+     
      const opponent = activeMatches[username];
      if (opponent) {
          if (onlineUsers[opponent] && onlineUsers[opponent].socketId) {
@@ -150,7 +150,6 @@ io.on('connection', (socket) => {
      }
   });
 
-  // Uscita drastica (chiusura netta del browser)
   socket.on('disconnect', () => {
     const userObj = Object.values(onlineUsers).find(u => u.socketId === socket.id);
     if (userObj) {
