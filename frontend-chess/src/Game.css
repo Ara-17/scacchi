@@ -1,0 +1,217 @@
+/* Body generale */
+body {
+  margin: 0; /* Rimuove il margine predefinito del browser */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Font principale del progetto */
+  background: linear-gradient(135deg, #1e1e2f, #3a3a5c); /* Sfondo a gradiente scuro elegante */
+  color: #f0f0f0; /* Colore del testo principale */
+}
+
+/* Container principale */
+.app {
+  display: flex; /* Layout flessibile */
+  flex-direction: column; /* Dispone i figli in colonna */
+  align-items: center; /* Centra orizzontalmente tutti i figli */
+  padding: 20px; /* Spaziatura interna */
+  min-height: 100vh; /* Altezza minima 100% della finestra */
+}
+
+/* -------------------- Pagina Accesso -------------------- */
+.peer-setup, .color-select {
+  display: flex; /* Flexbox per layout verticale */
+  flex-direction: column; /* Disposizione verticale dei figli */
+  align-items: center; /* Centra orizzontalmente */
+  background: rgba(40, 40, 60, 0.95); /* Sfondo semitrasparente scuro */
+  padding: 30px 40px; /* Spaziatura interna generosa */
+  border-radius: 16px; /* Angoli arrotondati */
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); /* Ombra morbida */
+  margin-bottom: 30px; /* Spazio sotto il pannello */
+  animation: fadeIn 0.6s ease; /* Animazione di comparsa */
+}
+
+.peer-setup input {
+  padding: 12px; /* Spaziatura interna */
+  border-radius: 8px; /* Angoli arrotondati */
+  border: none; /* Nessun bordo */
+  margin-bottom: 15px; /* Spazio sotto input */
+  width: 250px; /* Larghezza fissa */
+  font-size: 16px; /* Dimensione testo */
+}
+
+.peer-setup button, .color-select button {
+  padding: 12px 25px; /* Spaziatura interna */
+  margin: 8px; /* Spaziatura esterna */
+  border-radius: 12px; /* Angoli arrotondati */
+  border: none; /* Nessun bordo */
+  background: linear-gradient(135deg, #ff7f50, #ff956f); /* Gradiente di colore per pulsanti */
+  color: #fff; /* Testo bianco */
+  font-weight: bold; /* Testo in grassetto */
+  font-size: 16px; /* Dimensione testo */
+  cursor: pointer; /* Cursore a mano */
+  transition: all 0.3s ease; /* Transizione morbida su hover */
+}
+
+.peer-setup button:hover, .color-select button:hover {
+  transform: translateY(-2px); /* Solleva leggermente il pulsante */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4); /* Ombra hover */
+}
+
+/* Animazione di comparsa */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); } /* Inizio: invisibile e spostato in alto */
+  to { opacity: 1; transform: translateY(0); } /* Fine: visibile e in posizione */
+}
+
+/* -------------------- Layout principale -------------------- */
+.main-container {
+  display: flex; /* Layout orizzontale per colonne */
+  gap: 30px; /* Spazio tra le colonne */
+  width: 100%; /* Larghezza massima */
+  max-width: 1200px; /* Limite massimo larghezza */
+}
+
+/* Colonna sinistra */
+.left-column {
+  flex: 2; /* Occupa più spazio */
+  display: flex; /* Flex verticale */
+  flex-direction: column;
+  align-items: center; /* Centra i figli */
+}
+
+/* Colonna destra */
+.right-column {
+  flex: 1; /* Occupa meno spazio */
+  background: rgba(40,40,60,0.95); /* Sfondo semitrasparente scuro */
+  padding: 20px; /* Spaziatura interna */
+  border-radius: 16px; /* Angoli arrotondati */
+  height: fit-content; /* Altezza adatta ai contenuti */
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4); /* Ombra morbida */
+}
+
+/* -------------------- Timer -------------------- */
+.turn-info {
+  display: flex; /* Flex orizzontale per i timer */
+  gap: 20px; /* Spazio tra timer */
+  margin-bottom: 20px; /* Spazio sotto */
+}
+
+.timer {
+  padding: 12px 20px; /* Spaziatura interna */
+  border-radius: 12px; /* Angoli arrotondati */
+  background: #3a3a5c; /* Sfondo scuro */
+  font-weight: bold; /* Testo in grassetto */
+  font-size: 18px; /* Dimensione testo */
+  text-align: center; /* Testo centrato */
+  min-width: 130px; /* Larghezza minima */
+  transition: all 0.3s ease; /* Transizione morbida per animazioni */
+}
+
+.timer.active {
+  background: #ff7f50; /* Colore evidenziato quando è il turno */
+  color: #fff; /* Testo bianco */
+  transform: scale(1.1); /* Leggera ingrandita */
+  box-shadow: 0 0 15px #ff7f50; /* Bagliore */
+}
+
+/* -------------------- Move Log -------------------- */
+.move-log {
+  display: flex; /* Flex verticale */
+  flex-direction: column; /* Colonna */
+  gap: 10px; /* Spazio tra mosse */
+  max-height: 600px; /* Altezza massima log */
+  overflow-y: auto; /* Scroll verticale se troppe mosse */
+}
+
+.move {
+  display: flex; /* Layout orizzontale per immagine e testo */
+  align-items: center; /* Allinea verticalmente */
+  gap: 15px; /* Spazio tra elementi */
+  background: rgba(58,58,92,0.8); /* Sfondo log */
+  padding: 10px 12px; /* Padding interno */
+  border-radius: 12px; /* Angoli arrotondati */
+  transition: background 0.3s ease, transform 0.2s ease; /* Animazione hover */
+}
+
+.move:hover {
+  background: rgba(75,75,122,0.9); /* Colore hover */
+  transform: scale(1.02); /* Leggera ingrandita al passaggio */
+}
+
+.move img {
+  width: 40px; /* Icona pezzo più grande */
+  height: 40px;
+}
+
+.move-from-to {
+  font-weight: bold; /* Testo in grassetto */
+  font-size: 18px; /* Testo leggibile */
+  color: #fff; /* Testo bianco */
+}
+
+/* -------------------- Promozione -------------------- */
+.promotion-popup {
+  display: flex; /* Flex verticale */
+  flex-direction: column;
+  align-items: center; /* Centra i pulsanti */
+  background: rgba(50,50,70,0.95); /* Sfondo semitrasparente */
+  padding: 20px;
+  border-radius: 16px;
+  margin-top: 15px; /* Distanza dalla scacchiera */
+  box-shadow: 0 8px 20px rgba(0,0,0,0.5); /* Ombra popup */
+  animation: fadeIn 0.5s ease; /* Animazione comparsa */
+}
+
+.promotion-buttons button {
+  background: linear-gradient(135deg, #ff7f50, #ff956f); /* Gradient pulsanti */
+  margin: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.promotion-buttons button:hover {
+  transform: translateY(-2px); /* Solleva al passaggio */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* -------------------- Game Over -------------------- */
+.game-over {
+  margin-top: 20px;
+  padding: 20px 25px;
+  background: rgba(40,40,60,0.95);
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+}
+
+.game-over button {
+  margin-top: 12px;
+  padding: 12px 25px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #ff7f50, #ff956f);
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.game-over button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* -------------------- Scacchiera -------------------- */
+.react-chessboard {
+  border-radius: 16px; /* Angoli arrotondati */
+  overflow: hidden; /* Ritaglia eventuali elementi fuori bordo */
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5); /* Ombra elegante */
+  transition: transform 0.3s ease; /* Animazione hover */
+  margin-bottom: 20px; /* Distanza dal log o altri elementi */
+}
+
+.react-chessboard:hover {
+  transform: scale(1.02); /* Leggera ingrandita al passaggio */
+}
+

@@ -1,0 +1,324 @@
+:root {
+  --bg-dark: #0f1014;       /* Sfondo scurissimo */
+  --sidebar-bg: #16171b;    /* Sfondo sidebar */
+  --gold-primary: #d4af37;  /* Oro classico */
+  --gold-hover: #f1c40f;    /* Oro più acceso per hover */
+  --text-white: #ffffff;
+  --text-gray: #a0a0a0;
+  --glass-bg: rgba(22, 23, 27, 0.85); /* Effetto vetro scuro */
+  --success: #2ecc71;
+  --danger: #e74c3c;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-white);
+  height: 100vh;
+  overflow: hidden;
+  background-image: url('https://images.unsplash.com/photo-1586165368502-1bad197a6461?q=80&w=2658&auto=format&fit=crop'); 
+  background-size: cover;
+  background-position: center;
+}
+
+/* Sovrapposizione scura per rendere leggibile il testo sopra l'immagine */
+body::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: -1;
+}
+
+#main {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* --- LANDING / INTRO --- */
+.intro-container {
+  text-align: center;
+  animation: fadeIn 1s ease;
+}
+
+.intro-title {
+  font-size: 4rem;
+  text-transform: uppercase;
+  letter-spacing: 5px;
+  margin-bottom: 40px;
+}
+
+.intro-buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.btn-intro {
+  padding: 15px 40px;
+  font-size: 1.2rem;
+  border: 2px solid var(--gold-primary);
+  background: transparent;
+  color: var(--gold-primary);
+  cursor: pointer;
+  transition: 0.3s;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.btn-intro:hover {
+  background: var(--gold-primary);
+  color: #000;
+  box-shadow: 0 0 15px var(--gold-primary);
+}
+
+.loading-screen {
+  text-align: center;
+}
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #333;
+  border-top: 5px solid var(--gold-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+}
+
+/* --- DASHBOARD HOME LAYOUT --- */
+.dashboard {
+  display: flex;
+  width: 95vw;
+  height: 90vh;
+  background: var(--glass-bg);
+  border-radius: 20px;
+  box-shadow: 0 0 50px rgba(0,0,0,0.8);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* --- SIDEBAR SINISTRA --- */
+.sidebar {
+  width: 300px; /* Larghezza fissa */
+  background-color: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #333;
+  padding: 20px;
+  flex-shrink: 0;
+}
+
+/* Profilo Utente */
+.user-profile {
+  text-align: center;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #333;
+  margin-bottom: 20px;
+}
+
+.avatar-large {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 3px solid var(--gold-primary);
+  margin-bottom: 10px;
+  object-fit: cover;
+}
+
+.username-display {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-white);
+  margin: 0;
+}
+
+.elo-display {
+  color: var(--gold-primary);
+  font-weight: bold;
+  font-size: 1rem;
+  margin-top: 5px;
+}
+
+/* Sezione Storico Partite */
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-gray);
+  margin-bottom: 15px;
+  letter-spacing: 1px;
+}
+
+.history-list {
+  flex: 1; /* Prende spazio disponibile */
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.match-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  background: rgba(255,255,255,0.05);
+  margin-bottom: 8px;
+  border-radius: 5px;
+  font-size: 0.9rem;
+}
+.match-result.win { color: var(--success); }
+.match-result.loss { color: var(--danger); }
+
+/* Sezione Amici (In basso) */
+.friends-section {
+  max-height: 30%;
+  overflow-y: auto;
+}
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-radius: 5px;
+}
+.friend-item:hover { background: rgba(255,255,255,0.1); }
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--success);
+  margin-left: auto;
+  box-shadow: 0 0 5px var(--success);
+}
+
+.friend-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-right: 10px;
+  background: #555;
+}
+
+/* --- AREA CENTRALE (MAIN) --- */
+.main-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-image: url('https://images.unsplash.com/photo-1529699211952-734e80c4d42b?q=80&w=2071&auto=format&fit=crop'); /* Immagine scacchiera */
+  background-size: cover;
+  background-position: center;
+}
+
+/* Effetto scuro sopra l'immagine centrale */
+.main-area::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); 
+  z-index: 0;
+}
+
+.main-content-wrapper {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  width: 100%;
+  max-width: 600px;
+}
+
+.brand-title {
+  font-size: 3rem;
+  margin-bottom: 40px;
+  text-transform: uppercase;
+}
+.brand-title span { color: var(--gold-primary); }
+
+.play-box {
+  background: rgba(0,0,0,0.6);
+  padding: 40px;
+  border-radius: 15px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.btn-big-play {
+  background: linear-gradient(45deg, #b8860b, #f1c40f);
+  color: #111;
+  font-size: 2rem;
+  font-weight: 900;
+  padding: 20px 0;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  box-shadow: 0 5px 20px rgba(241, 196, 15, 0.4);
+  transition: transform 0.2s;
+}
+
+.btn-big-play:hover {
+  transform: scale(1.02);
+}
+
+.secondary-actions {
+  display: flex;
+  gap: 15px;
+  justify-content: space-between;
+}
+
+.btn-sec {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--gold-primary);
+  color: var(--text-white);
+  padding: 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  transition: 0.3s;
+}
+
+.btn-sec:hover {
+  background: rgba(212, 175, 55, 0.2);
+}
+
+/* Login/Register Form Styles (Adattati al nuovo tema) */
+.auth-box {
+    background: var(--sidebar-bg);
+    padding: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--gold-primary);
+    width: 350px;
+    text-align: center;
+}
+.auth-input {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    background: #222;
+    border: 1px solid #444;
+    color: white;
+    border-radius: 5px;
+}
+.auth-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--gold-primary);
+    border: none;
+    font-weight: bold;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }

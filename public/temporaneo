@@ -1,0 +1,377 @@
+// backend Node.js classico con Express + Socket.IO
+// salva come server.js
+//SERVERJS TEMPORANEO
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import db from './connessione.js';
+import session from 'express-session';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+// -----------------------------
+//  CONFIGURAZIONE BASE
+// -----------------------------
+const app = express();
+app.use(cors());
+app.use(express.json());
+let onlineUsers = {};
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(cors());
+app.use(express.json());
+
+
+app.use(session({
+  secret: 'stringa_segreta',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+
+}));
+
+// -----------------------------
+//   API DI LOGIN
+// -----------------------------
+app.post('/register', (req, res) => {
+  const { username, password, email, nome, cognome, cf, cell } = req.body;
+
+  const sql = "INSERT INTO utente (nome, cognome, username, email, password, cf, cell) VALUES (?, ?, ?, ?, ?, ?, ?)";
+  db.query(sql, [nome, cognome, username, email, password, cf, cell], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Errore database' });
+      res.json({ message: 'Registrazione completata' });
+  });
+});
+
+
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  const sql = "SELECT * FROM utente WHERE username = ? AND password = ?";
+  
+  db.query(sql, [username, password], (err, results) => {
+    if (err) return res.status(500).json({ error: "Errore database" });
+
+    if (results.length === 0) {
+      return res.status(401).json({ error: "Credenziali errate" });
+    }
+
+    // Salviamo in sessione
+    req.session.username = username;
+    
+    // Aggiorniamo la mappa utenti (solo dati base)
+    if (!onlineUsers[username]) {
+        onlineUsers[username] = { nome: username, online: false, socketId: null };
+    }
+
+    // CORREZIONE: Mando UNA SOLA risposta JSON
+    console.log(`Login effettuato per: ${username}`);
+    return res.json({ message: "Login effettuato", username: username });
+  });
+});
+
+app.post('/logout', (req, res) => {
+    const user = req.session.username;
+    if (user && onlineUsers[user]) {
+        onlineUsers[user].online = false;
+    }
+    req.session.destroy();
+    aggiornaListaOnline();
+    res.json({ message: "Logout effettuato" });
+});
+
+
+app.get('/api/check-session', (req, res) => {
+    console.log("Check sessione in corso...", req.session);
+    if (req.session.username) {
+        res.json({ isLoggedIn: true, username: req.session.username });
+    } else {
+        res.json({ isLoggedIn: false });
+    }
+});
+
+
+// -----------------------------
+//  SOCKET.IO — UTENTI ONLINE
+// -----------------------------
+io.on('connection', (socket) => {
+  console.log('Nuova connessione:', socket.id);
+
+  // utente si collega dopo login
+  socket.on('set-online', (username) => {
+    if (!onlineUsers[username]){
+      onlineUsers[username] = { nome: username, online: true, socketId: socket.id };
+    }else{
+      onlineUsers[username].online = true;
+      onlineUsers[username].socketId = socket.id;
+    }
+    aggiornaListaOnline();
+  });
+
+  // utente si disconette
+  socket.on('disconnect', () => {
+    // trova chi si è disconnesso
+    for (const username in onlineUsers) {
+      if (onlineUsers[username].socketId === socket.id) {
+        console.log('Utente disconnesso:', username);
+        onlineUsers[username].online = false;
+        onlineUsers[username].socketId = null;
+        break;
+      }
+    }
+    aggiornaListaOnline();
+  });
+
+  socket.on('set-offline', (username) => {
+    if (onlineUsers[username]){
+      console.log('Utente offline:', username);
+      onlineUsers[username].online = false;
+      onlineUsers[username].socketId = null;
+      aggiornaListaOnline();
+    } 
+  });
+
+  // sfida un altro player
+  socket.on('challenge', ({ from, to }) => {
+    console.log("SFIDA DA ", from, " A ", to);
+    const userTo = onlineUsers[to];
+    console.log("USER:", userTo);
+    if (userTo && userTo.online) {
+      console.log("UserTo: ",userTo,"From: ", from," To: ", to);
+      io.to(userTo.socketId).emit('challenge-request', { from });
+    }else{
+      console.log("NO ONLINE");
+    }
+  });
+
+  // accetta sfida
+  socket.on('challenge-accepted', ({ from, to }) => {
+    const userFrom = onlineUsers[from];
+    if (userFrom && userFrom.online) {
+      io.to(userFrom.socketId).emit('challenge-accepted', { to });
+    }
+  });
+
+});
+
+// invio lista utenti online a tutti
+function aggiornaListaOnline() {
+  const online = Object.keys(onlineUsers).filter(u => onlineUsers[u].online);
+  io.emit('online-users', online);
+}
+
+// -----------------------------
+//  AVVIO SERVER
+// -----------------------------
+const PORT = 3001;
+server.listen(PORT, () => {
+  console.log('Server avviato su http://localhost:' + PORT);
+});
+
+
+
+/// ALTRO SERVER TEMPORANEO (ULTIMO PENSO)
+
+// backend Node.js classico con Express + Socket.IO
+// salva come server.js
+//SERVERJS TEMPORANEO
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import db from './connessione.js';
+import session from 'express-session';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+// -----------------------------
+//  CONFIGURAZIONE BASE
+// -----------------------------
+const app = express();
+app.use(cors());
+app.use(express.json());
+let onlineUsers = {};
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(cors());
+app.use(express.json());
+
+
+app.use(session({
+  secret: 'stringa_segreta',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+
+}));
+
+// -----------------------------
+//   API DI LOGIN
+// -----------------------------
+app.post('/register', (req, res) => {
+  const { username, password, email, nome, cognome, cf, cell } = req.body;
+
+  const sql = "INSERT INTO utente (nome, cognome, username, email, password, cf, cell) VALUES (?, ?, ?, ?, ?, ?, ?)";
+  db.query(sql, [nome, cognome, username, email, password, cf, cell], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Errore database' });
+      res.json({ message: 'Registrazione completata' });
+  });
+});
+
+
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  const sql = "SELECT * FROM utente WHERE username = ? AND password = ?";
+  
+  db.query(sql, [username, password], (err, results) => {
+    if (err) return res.status(500).json({ error: "Errore database" });
+
+    if (results.length === 0) {
+      return res.status(401).json({ error: "Credenziali errate" });
+    }
+
+    // Salviamo in sessione
+    req.session.username = username;
+    
+    // Aggiorniamo la mappa utenti (solo dati base)
+    if (!onlineUsers[username]) {
+        onlineUsers[username] = { nome: username, online: false, socketId: null };
+    }
+
+    // CORREZIONE: Mando UNA SOLA risposta JSON
+    console.log(`Login effettuato per: ${username}`);
+    return res.json({ message: "Login effettuato", username: username });
+  });
+});
+
+app.post('/logout', (req, res) => {
+    const user = req.session.username;
+    if (user && onlineUsers[user]) {
+        onlineUsers[user].online = false;
+    }
+    req.session.destroy();
+    aggiornaListaOnline();
+    res.json({ message: "Logout effettuato" });
+});
+
+
+app.get('/api/check-session', (req, res) => {
+    console.log("Check sessione in corso...", req.session);
+    if (req.session.username) {
+        res.json({ isLoggedIn: true, username: req.session.username });
+    } else {
+        res.json({ isLoggedIn: false });
+    }
+});
+
+
+// -----------------------------
+//  SOCKET.IO — UTENTI ONLINE
+// -----------------------------
+io.on('connection', (socket) => {
+  console.log('Nuova connessione:', socket.id);
+
+  // utente si collega dopo login
+  socket.on('set-online', (username) => {
+    // --- AGGIUNGI QUESTO CONTROLLO DI SICUREZZA ---
+    // Se il nome è vuoto, null, o la stringa "null", fermiamo tutto.
+    if (!username || username === "null" || username === "undefined") {
+        console.log("Tentativo di connessione con username non valido bloccato.");
+        return;
+    }
+    // ----------------------------------------------
+
+    if (!onlineUsers[username]) {
+        onlineUsers[username] = { nome: username, online: true, socketId: socket.id };
+    } else {
+        onlineUsers[username].online = true;
+        onlineUsers[username].socketId = socket.id;
+    }
+    aggiornaListaOnline();
+});
+
+  // utente si disconette
+  socket.on('disconnect', () => {
+    // trova chi si è disconnesso
+    for (const username in onlineUsers) {
+      if (onlineUsers[username].socketId === socket.id) {
+        console.log('Utente disconnesso:', username);
+        onlineUsers[username].online = false;
+        onlineUsers[username].socketId = null;
+        break;
+      }
+    }
+    aggiornaListaOnline();
+  });
+
+  socket.on('set-offline', (username) => {
+    if (onlineUsers[username]){
+      console.log('Utente offline:', username);
+      onlineUsers[username].online = false;
+      onlineUsers[username].socketId = null;
+      aggiornaListaOnline();
+    } 
+  });
+
+  // sfida un altro player
+  socket.on('challenge', ({ from, to }) => {
+    console.log("SFIDA DA ", from, " A ", to);
+    const userTo = onlineUsers[to];
+    console.log("USER:", userTo);
+    if (userTo && userTo.online) {
+      console.log("UserTo: ",userTo,"From: ", from," To: ", to);
+      io.to(userTo.socketId).emit('challenge-request', { from });
+    }else{
+      console.log("NO ONLINE");
+    }
+  });
+
+  // accetta sfida
+  socket.on('challenge-accepted', ({ from, to }) => {
+    const userFrom = onlineUsers[from];
+    if (userFrom && userFrom.online) {
+      io.to(userFrom.socketId).emit('challenge-accepted', { to });
+    }
+  });
+
+});
+
+// invio lista utenti online a tutti
+function aggiornaListaOnline() {
+  const online = Object.keys(onlineUsers).filter(u => onlineUsers[u].online);
+  io.emit('online-users', online);
+}
+
+// -----------------------------
+//  AVVIO SERVER
+// -----------------------------
+const PORT = 3001;
+server.listen(PORT, () => {
+  console.log('Server avviato su http://localhost:' + PORT);
+});
