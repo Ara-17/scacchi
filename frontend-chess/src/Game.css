@@ -1,4 +1,4 @@
-/* Body base */
+/* imposto le regole generali per tutto lo schermo come il font e lo sfondo scuro */
 body {
   margin: 0;
   padding: 0;
@@ -7,6 +7,7 @@ body {
   color: #f0f0f0;
 }
 
+/* contenitore principale che occupa tutta l altezza della finestra e centra il contenuto */
 .app {
   display: flex;
   flex-direction: column;
@@ -16,7 +17,7 @@ body {
   box-sizing: border-box;
 }
 
-/* Modali iniziali (Connessione / Colore) */
+/* stili per i riquadri che appaiono all inizio per il codice amico o per la scelta del colore */
 .peer-setup, .color-select {
   background: rgba(15, 16, 20, 0.85);
   padding: 40px;
@@ -31,6 +32,7 @@ body {
   text-align: center;
 }
 
+/* sistemo la casella di testo dove si incolla il codice per renderla ben visibile */
 .peer-setup input {
   padding: 14px;
   border-radius: 10px;
@@ -44,6 +46,7 @@ body {
   text-align: center;
 }
 
+/* tengo i bottoni allineati al centro e separati tra loro */
 .action-buttons-row {
   display: flex;
   gap: 15px;
@@ -51,6 +54,7 @@ body {
   flex-wrap: wrap;
 }
 
+/* grafica dei bottoni dei menu iniziali con angoli smussati e testo in maiuscolo */
 .peer-setup button, .color-select button {
   padding: 14px 30px;
   border-radius: 10px;
@@ -64,17 +68,14 @@ body {
   transition: all 0.3s ease;
 }
 
+/* aggiungo un piccolo spostamento verso l alto quando si passa il mouse sui bottoni */
 .peer-setup button:hover, .color-select button:hover {
   transform: translateY(-3px);
   background: var(--gold-hover, #f1c40f);
   box-shadow: 0 10px 20px rgba(212, 175, 55, 0.4);
 }
 
-
-/* ==========================================================================
-   LAYOUT GIOCO PRINCIPALE (A schermo intero, senza scroll)
-   ========================================================================== */
-
+/* imposto la struttura per mettere la scacchiera a sinistra e il registro mosse a destra */
 .main-container {
   display: flex;
   flex-direction: row; 
@@ -85,15 +86,15 @@ body {
   align-items: flex-start;
 }
 
-/* Colonna Sinistra (Scacchiera + Barre giocatori) */
+/* blocco che contiene i nomi dei giocatori e la scacchiera vera e propria */
 .left-column {
-  /* Grandezza definita dall'altezza schermo per evitare che esca fuori */
+  /* uso clamp per calcolare la larghezza in base all altezza dello schermo cosi non taglia i bordi */
   width: clamp(350px, calc(100vh - 250px), 900px);
   display: flex;
   flex-direction: column;
 }
 
-/* --- PLAYER BARS (Nomi e Timer in stile scacchistico reale) --- */
+/* grafica delle barre orizzontali con i nomi e i timer */
 .player-bar {
   display: flex;
   justify-content: space-between;
@@ -105,37 +106,42 @@ body {
   border: 1px solid rgba(255,255,255,0.05);
   box-sizing: border-box;
   transition: all 0.3s ease;
-  margin-bottom: 15px; /* Spazio dalla scacchiera o dal basso */
+  margin-bottom: 15px; 
   box-shadow: 0 5px 15px rgba(0,0,0,0.5);
 }
 
+/* quando tocca a un giocatore cambio i colori della sua barra per farlo capire */
 .player-bar.active-turn {
   background: linear-gradient(90deg, rgba(212, 175, 55, 0.15), rgba(20, 22, 28, 0.95));
   border-left: 5px solid var(--gold-primary, #d4af37);
   box-shadow: 0 0 25px rgba(212, 175, 55, 0.25);
 }
 
+/* allineo in orizzontale l immagine del profilo e il nome dell utente */
 .player-user {
   display: flex;
   align-items: center;
   gap: 15px;
 }
 
+/* stile dell immagine di profilo a forma di quadrato con i bordi arrotondati */
 .player-avatar {
   width: 48px;
   height: 48px;
-  border-radius: 8px; /* Quadrato smussato e moderno */
+  border-radius: 8px; 
   border: 2px solid #444;
   object-fit: cover;
   background: #222;
   transition: 0.3s;
 }
 
+/* coloro il bordo dell immagine di profilo d oro quando e il turno del giocatore */
 .active-turn .player-avatar {
   border-color: var(--gold-primary, #d4af37);
   box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
 }
 
+/* sistemo il font per il nome dell utente */
 .player-name {
   font-size: 1.4rem;
   font-weight: 900;
@@ -144,6 +150,7 @@ body {
   letter-spacing: 1px;
 }
 
+/* quadratino che indica se il giocatore sta usando il bianco o il nero */
 .player-piece-color {
   width: 24px;
   height: 24px;
@@ -157,6 +164,7 @@ body {
   box-shadow: 0 2px 5px rgba(0,0,0,0.5);
 }
 
+/* faccio sembrare il timer un orologio digitale usando il font monospace */
 .player-timer {
   font-size: 1.8rem;
   font-weight: 900;
@@ -171,6 +179,7 @@ body {
   transition: 0.3s;
 }
 
+/* accendo i numeri del timer di color oro quando tocca al giocatore */
 .active-turn .player-timer {
   color: var(--gold-primary, #d4af37);
   border-color: var(--gold-primary, #d4af37);
@@ -178,18 +187,17 @@ body {
   box-shadow: inset 0 0 10px rgba(212, 175, 55, 0.3);
 }
 
-/* --- SCACCHIERA --- */
+/* obbligo la scacchiera a rimanere sempre perfettamente quadrata con aspect ratio */
 .board-wrapper {
   width: 100%;
   aspect-ratio: 1 / 1; 
   border-radius: 8px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-  margin-bottom: 15px; /* Spazio prima della barra inferiore */
+  margin-bottom: 15px; 
   background-color: rgba(255,255,255,0.02); 
 }
 
-
-/* --- BOTTONI AZIONE --- */
+/* blocco che contiene i bottoni di resa e patta sotto la scacchiera */
 .game-actions {
   display: flex;
   gap: 25px;
@@ -197,6 +205,7 @@ body {
   margin-bottom: 20px;
 }
 
+/* stile base uguale per entrambi i bottoni delle azioni in gioco */
 .btn-action {
   flex: 1;
   padding: 16px;
@@ -210,6 +219,7 @@ body {
   letter-spacing: 1px;
 }
 
+/* coloro il tasto di resa di rosso per farlo spiccare */
 .btn-surrender { background: var(--danger, #e74c3c); color: white; }
 .btn-surrender:hover { 
   background: #c0392b; 
@@ -217,6 +227,7 @@ body {
   box-shadow: 0 10px 20px rgba(231, 76, 60, 0.4); 
 }
 
+/* faccio il tasto della patta grigio scuro e vuoto dentro per renderlo meno invadente */
 .btn-draw { 
   background: rgba(255,255,255,0.05); 
   border: 2px solid var(--text-gray, #a0a0a0); 
@@ -229,11 +240,10 @@ body {
   box-shadow: 0 10px 20px rgba(255,255,255,0.1); 
 }
 
-
-/* --- REGISTRO MOSSE DESTRA --- */
+/* colonna di destra che tiene la lista delle mosse giocate fino a quel momento */
 .right-column {
   width: 360px; 
-  /* Il registro si adatta per essere esteticamente alto quanto tutto il blocco scacchiera */
+  /* faccio in modo che il registro sia alto esattamente quanto la scacchiera a fianco */
   height: clamp(350px, calc(100vh - 160px), 900px);
   background: rgba(15, 16, 20, 0.85);
   backdrop-filter: blur(10px);
@@ -246,6 +256,7 @@ body {
   box-shadow: 0 15px 40px rgba(0,0,0,0.6);
 }
 
+/* titolo del registro mosse separato da una riga dorata */
 .right-column h2 {
   margin-top: 0;
   color: var(--gold-primary, #d4af37);
@@ -257,6 +268,7 @@ body {
   letter-spacing: 2px;
 }
 
+/* contenitore della lista che permette lo scorrimento verso il basso se le mosse sono tante */
 .move-log {
   display: flex;
   flex-direction: column;
@@ -266,10 +278,12 @@ body {
   padding-right: 15px;
 }
 
+/* coloro la barra di scorrimento laterale per farla in tinta con il resto del sito */
 .move-log::-webkit-scrollbar { width: 8px; }
 .move-log::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 10px; }
 .move-log::-webkit-scrollbar-thumb { background: var(--gold-primary, #d4af37); border-radius: 10px; }
 
+/* stile di ogni singola riga di mossa con un bordino dorato a sinistra */
 .move {
   display: flex;
   align-items: center;
@@ -281,16 +295,17 @@ body {
   transition: transform 0.2s;
 }
 
+/* piccolo scatto in avanti della mossa quando ci si passa sopra col mouse */
 .move:hover {
   background: rgba(255,255,255,0.1);
   transform: translateX(5px);
 }
 
+/* regolo la grandezza delle immagini dei pezzi dentro il log */
 .move img { width: 35px; height: 35px; }
 .move span { font-family: monospace; font-size: 1.3rem; font-weight: bold; }
 
-
-/* --- POPUP E GAME OVER --- */
+/* stili dei popup che appaiono in mezzo allo schermo durante e dopo la partita */
 .draw-popup, .promotion-popup {
   background: rgba(15, 16, 20, 0.95);
   border: 2px solid var(--gold-primary, #d4af37);
@@ -304,6 +319,7 @@ body {
   font-weight: bold;
 }
 
+/* bottoni dentro i popup per accettare o rifiutare le richieste */
 .draw-popup button { 
   margin: 15px 10px 0; 
   padding: 12px 25px; 
@@ -317,6 +333,7 @@ body {
 .btn-success { background: var(--success, #2ecc71); color: white; }
 .btn-danger { background: var(--danger, #e74c3c); color: white; }
 
+/* contenitore delle immagini dei pezzi quando si scegle in cosa promuovere il pedone */
 .promotion-buttons { display: flex; gap: 15px; justify-content: center; margin-top: 15px; }
 .promotion-buttons button { 
   background: #333; 
@@ -328,6 +345,7 @@ body {
 }
 .promotion-buttons button:hover { background: var(--gold-primary, #d4af37); transform: translateY(-3px); }
 
+/* popup finale che mostra il risultato della partita quando qualcuno vince */
 .game-over {
   margin-top: 10px;
   padding: 30px;
@@ -340,6 +358,7 @@ body {
   box-shadow: 0 15px 40px rgba(0,0,0,0.8);
 }
 
+/* bottone per tornare al menu alla fine della partita */
 .game-over button {
   margin-top: 15px;
   padding: 15px 30px;
@@ -353,10 +372,12 @@ body {
   text-transform: uppercase;
 }
 
+/* animazione base per far apparire i menu in modo morbido invece che di scatto */
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
-/* --- RESPONSIVITÀ PER TELEFONI E TABLET --- */
+/* regole per far funzionare bene la schermata sui telefoni e sui tablet */
 @media (max-width: 1000px) {
+  /* metto le colonne in verticale cosi il registro delle mosse va sotto la scacchiera */
   .main-container { flex-direction: column; align-items: center; gap: 30px; }
   .left-column { width: 100%; max-width: 650px; } 
   .right-column { width: 100%; max-width: 650px; height: 450px; } 
