@@ -54,6 +54,7 @@ Gestisce l'autenticazione e il server Socket.io. Dalla directory principale del 
 ```bash
 npm install
 node server.js
+```
 
 2. Avvio Client Frontend (React)
 
