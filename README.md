@@ -1,89 +1,68 @@
-# Scacchi Multiplayer - Real-Time Web Application (P2P & WebSockets)
+Scacchi Multiplayer - Real-Time Web Application P2P e WebSockets
+Sistema avanzato per il gioco degli scacchi in multiplayer online.
+Il progetto sfrutta un'architettura ibrida per garantire la minima latenza e abbattere il carico sul server: utilizza WebSockets per l'orchestrazione del matchmaking e il signaling iniziale, e WebRTC (tramite PeerJS) per stabilire una connessione Peer-to-Peer diretta tra i giocatori durante l'effettiva partita.
 
-Applicazione web full-stack che consente agli utenti di registrarsi, autenticarsi e disputare partite di scacchi in tempo reale. 
+Funzionalità Principali
+Autenticazione Sicura: Sistema di registrazione e login persistente per gli utenti, interfacciato direttamente con un database MySQL.
 
-Il progetto si distingue per un'architettura ibrida avanzata: utilizza **WebSockets** per il matchmaking e il signaling iniziale, e **WebRTC (tramite PeerJS)** per stabilire una connessione Peer-to-Peer (P2P) diretta tra i giocatori durante la partita, abbattendo la latenza e riducendo il carico sul server centrale.
+Matchmaking Real-Time: Ricerca degli avversari, accoppiamento e creazione dinamica delle stanze di gioco gestite centralmente dal server Node.js tramite Socket.io.
 
-## Stack Tecnologico e Requisiti di Progetto
+Gameplay Peer-to-Peer: Una volta accoppiati, i client stabiliscono un tunnel diretto via WebRTC. Le mosse e gli aggiornamenti della scacchiera viaggiano esclusivamente tra i due browser, escludendo il server dal flusso dati e azzerando la latenza.
 
-L'infrastruttura è stata progettata per soddisfare rigorosi requisiti tecnologici, dividendo nettamente le responsabilità tra frontend, backend, database e rete P2P.
+Interfaccia e Validazione: Frontend single-page application ultra-reattivo sviluppato in React.js, con controllo e validazione rigorosa delle mosse legali.
 
-* **Frontend:** React.js, Vite, React-Router-Dom, React-Chessboard, Chess.js.
-* **Backend:** Node.js, Express.js.
-* **Signaling Server:** Socket.io (WebSocket).
-* **Connessione P2P:** PeerJS (WebRTC).
-* **Database:** MySQL (libreria `mysql2`).
+Stack Tecnologico
+Frontend: React.js + Vite
 
-## Architettura di Rete: Socket.io + PeerJS
+Backend: Node.js + Express.js
 
-La scelta di affiancare **Socket.io** e **PeerJS** è il vero cuore pulsante del progetto e risolve il problema della scalabilità. Ecco come collaborano:
+Signaling & Orchestration: Socket.io (WebSocket)
 
-1. **Fase di Signaling (Socket.io - Server-Side):**
-   * Il server Node.js funge da "punto di ritrovo".
-   * Quando i giocatori si collegano alla stanza di gioco (`Room`), Socket.io gestisce la loro presenza.
-   * Il server si occupa di scambiare gli **ID di PeerJS** tra il Giocatore 1 (Bianco) e il Giocatore 2 (Nero). In questo modo, i client sanno "chi chiamare".
+Connessione Diretta P2P: PeerJS (WebRTC)
 
-2. **Fase di Gameplay (PeerJS - Client-Side P2P):**
-   * Una volta che i client hanno ricevuto i rispettivi Peer ID tramite Socket.io, stabiliscono una connessione diretta **WebRTC** utilizzando PeerJS.
-   * Da questo momento in poi, lo stato della partita, le mosse (es. `e2-e4`) e la sincronizzazione della stringa FEN viaggiano *esclusivamente* sul canale P2P tra i due browser.
-   * **Vantaggio:** Il server Node.js viene liberato dal carico di dover elaborare e smistare ogni singola mossa di ogni singola partita attiva.
+Database: MySQL
 
-## Struttura del Database (MySQL)
+Architettura di Rete
+L'infrastruttura di comunicazione è divisa in due macro-fasi logiche:
 
-La persistenza dei dati è delegata a un database relazionale, necessario per la gestione sicura dell'autenticazione.
+Fase di Signaling (Server-Side tramite Socket.io): Il server funge unicamente da intermediario iniziale. Raccoglie i giocatori in attesa, alloca le stanze virtuali e permette ai due client abbinati di scambiarsi i rispettivi Peer ID in totale sicurezza.
 
-**Tabella `utenti`:**
-* `id` (INT, Primary Key, Auto Increment)
-* `username` (VARCHAR, Unique) - Identificativo univoco del giocatore.
-* `password` (VARCHAR) - Archiviazione delle credenziali di accesso.
+Fase di Gameplay (Client-Side tramite WebRTC): Ricevuti gli ID, i client instaurano una connessione P2P. A questo punto il server viene bypassato: tutte le interazioni sulla scacchiera viaggiano su questo canale diretto.
 
-*(Nota: La connessione al DB è gestita tramite un pool di connessioni in `connessione.js` per garantire performance elevate ed evitare memory leak).*
+Requisiti e Configurazione Database
+Per il funzionamento del sistema di autenticazione è necessario disporre di un'istanza MySQL attiva e configurata.
 
-## Funzionalità Principali e Moduli
+Assicurarsi di creare una tabella users con il seguente schema di base:
 
-* **Autenticazione e Accesso:** Pagine dedicate (`Login.jsx`, `Register.jsx`) con chiamate API REST (Express) verso il DB.
-* **Motore Scacchistico Validato:** Sfrutta `chess.js` sul frontend. Qualsiasi mossa tentata dall'utente viene prima validata localmente. Se la mossa è illegale, il pezzo torna alla posizione di partenza. Se è legale, la mossa viene inviata sul canale DataConnection di PeerJS.
-* **Interfaccia Dinamica SPA:** Rendering reattivo della scacchiera con `react-chessboard`. Lo stato della scacchiera si aggiorna automaticamente all'ascolto dell'evento `data` sul Peer.
-* **Gestione Disconnessioni:** Se la connessione PeerJS cade o un giocatore abbandona la pagina, l'evento viene catturato e notificato all'avversario.
+id (Primary Key, Auto-Increment)
 
-## Guida all'Installazione e all'Avvio
+username (Varchar, Unique, Not Null)
 
-Il progetto richiede due terminali separati per l'esecuzione in ambiente di sviluppo locale, oltre a un server MySQL attivo.
+password (Varchar, Not Null)
 
-### 1. Configurazione del Database
-1. Avviare il demone MySQL (es. tramite XAMPP o servizio locale).
-2. Verificare che le credenziali (host, utente, password, nome database) nel file `connessione.js` corrispondano al proprio ambiente locale.
-3. Creare la tabella degli utenti.
+Guida all'Installazione e Avvio
+L'ambiente è separato in due moduli indipendenti (API Backend e Client Frontend). È necessario avviare entrambi i servizi contemporaneamente utilizzando due terminali separati.
 
-### 2. Avvio del Server Node (Signaling & API)
-Questo terminale gestirà le richieste di Login/Register e il server WebSocket per lo scambio dei PeerID.
-```bash
-# Entrare nella cartella radice del progetto
+1. Avvio Server Backend (Signaling & DB)
+Gestisce l'autenticazione e il server Socket.io. Dalla directory principale del progetto avviare:
 npm install
-
-# Avviare il server
 node server.js
 
-### 3. Avvio del Frontend (React/Vite)
-Aprire un **nuovo terminale** separato per gestire l'interfaccia utente:
-
-```bash
-# Spostarsi nella directory del frontend (es. frontend-chess)
+2. Avvio Client Frontend (React)
+L'interfaccia utente è pacchettizzata e servita tramite Vite. In un nuovo terminale avviare:
 cd frontend-chess
-
-# Installare le dipendenze (React, PeerJS, Chessboard, ecc.)
 npm install
-
-# Avviare il server di sviluppo Vite
 npm run dev
 
-Il terminale restituirà un indirizzo locale (generalmente `http://localhost:5173`). Apri questo link nel tuo browser.
+L'applicazione sarà accessibile all'indirizzo locale: http://localhost:5173
 
-### 4. Testare una Partita in Locale
+Test dell'Applicazione in Locale
+Per simulare correttamente una partita end-to-end e verificare il tunnel P2P:
 
-Per testare correttamente il sistema P2P e le WebSockets sullo stesso computer:
-1. Apri **due finestre** del browser (ti consiglio di aprirne una in "Navigazione in Incognito" per mantenere separate le sessioni).
-2. Naviga in entrambe all'indirizzo del frontend (`http://localhost:5173`).
-3. **Registra** due account utente distinti (es. `Giocatore1` e `Giocatore2`) ed effettua il login.
-4. Accedi alla pagina di gioco con entrambi. Il server (via Socket.io) accoppierà i due client nella stessa stanza, scambierà i Peer ID, assegnerà i colori (Bianco/Nero) e stabilirà automaticamente la connessione WebRTC.
-5. Inizia a giocare! Le mosse verranno trasmesse in tempo reale via P2P.
+Aprire due finestre del browser (di cui almeno una in modalità in Incognito/Anonima per non accavallare i cookie di sessione).
+
+Navigare su http://localhost:5173 su entrambe le finestre.
+
+Creare due account utente distinti dalla pagina di Registrazione ed effettuare il Login.
+
+Cliccare su "Avvia Partita" contemporaneamente su entrambi i client: il sistema orchestrerà il matchmaking e aprirà la scacchiera attivando il gioco Peer-to-Peer.
